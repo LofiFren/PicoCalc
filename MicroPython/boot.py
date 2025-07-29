@@ -44,7 +44,7 @@ try:
     
     # Mount SD card to /sd with extra delay for stability
     time.sleep_ms(900)  # Add delay before SD init
-    sd = initsd(debug=True)  # Enable debug output
+    sd = initsd(debug=False)  # Enable debug output
     
     # Check if SD was initialized properly
     if sd:
