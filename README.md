@@ -61,6 +61,7 @@ MicroPython/
 │       ├── picocalc_ollama.py  ← Ollama LLM integration
 │       ├── sd_chk.py           ← SD card health checker
 │       ├── sim.py              ← device simulator
+│       ├── snake.py            ← Snake game
 │       ├── start_ollama.sh     ← Ollama server startup
 │       ├── synth.py            ← advanced synthesizer
 │       └── tetris.py           ← Tetris game with sound
