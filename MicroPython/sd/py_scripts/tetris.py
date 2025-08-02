@@ -30,9 +30,9 @@ AUDIO_RIGHT = 27  # PWM_R
 # Game constants
 BOARD_WIDTH = 10
 BOARD_HEIGHT = 20
-BLOCK_SIZE = 8
-BOARD_X = 50
-BOARD_Y = 20
+BLOCK_SIZE = 12  # Increased from 8 to 12 pixels
+BOARD_X = 20     # Moved left from 50 to 20
+BOARD_Y = 30     # Moved down slightly from 20 to 30
 
 # Color definitions (4-bit grayscale for PicoCalc display)
 COLOR_BLACK = 0
@@ -241,8 +241,8 @@ class TetrisGame:
         self.spawn_new_piece()
         self.generate_next_piece()
         
-        print("🎮 Tetris initialized!")
-        print("🔊 Sound enabled (press S to toggle)")
+        print("Tetris initialized!")
+        print("Sound enabled (press S to toggle)")
         
     def generate_next_piece(self):
         """Generate the next piece"""
@@ -480,8 +480,8 @@ class TetrisGame:
         if not self.next_piece:
             return
         
-        # Next piece area
-        next_x = BOARD_X + BOARD_WIDTH * BLOCK_SIZE + 10
+        # Next piece area - positioned to the right of the larger board
+        next_x = BOARD_X + BOARD_WIDTH * BLOCK_SIZE + 15  # Adjusted for larger board
         next_y = BOARD_Y + 20
         
         self.display.text("NEXT:", next_x, next_y - 15, COLOR_TEXT)
@@ -498,8 +498,8 @@ class TetrisGame:
     
     def draw_stats(self):
         """Draw game statistics"""
-        stats_x = BOARD_X + BOARD_WIDTH * BLOCK_SIZE + 10
-        stats_y = BOARD_Y + 100
+        stats_x = BOARD_X + BOARD_WIDTH * BLOCK_SIZE + 15  # Adjusted for larger board
+        stats_y = BOARD_Y + 120  # Moved down to accommodate larger next piece
         
         self.display.text(f"SCORE:", stats_x, stats_y, COLOR_TEXT)
         self.display.text(f"{self.score}", stats_x, stats_y + 12, COLOR_HIGHLIGHT)
@@ -512,15 +512,12 @@ class TetrisGame:
     
     def draw_controls(self):
         """Draw control instructions"""
-        controls_y = self.height - 80
+        controls_y = self.height - 40  # Moved up from bottom to avoid overlap
         
-        self.display.text("CONTROLS:", 10, controls_y, COLOR_TEXT)
-        self.display.text("↑: Rotate", 10, controls_y + 12, COLOR_TEXT_DIM)
-        self.display.text("←→: Move", 10, controls_y + 24, COLOR_TEXT_DIM)
-        self.display.text("↓: Soft Drop", 10, controls_y + 36, COLOR_TEXT_DIM)
-        self.display.text("SPACE: Hard Drop", 10, controls_y + 48, COLOR_TEXT_DIM)
-        self.display.text("P: Pause S: Sound", 10, controls_y + 60, COLOR_TEXT_DIM)
-        self.display.text("ESC: Exit", 125, controls_y + 60, COLOR_TEXT_DIM)
+        # Compact controls display for bottom of screen
+        self.display.text("↑:Rot ←→:Move ↓:Drop", 10, controls_y, COLOR_TEXT_DIM)
+        self.display.text("SPACE:Hard P:Pause", 10, controls_y + 12, COLOR_TEXT_DIM)
+        self.display.text("S:Sound ESC:Exit", 10, controls_y + 24, COLOR_TEXT_DIM)
     
     def draw_game_over(self):
         """Draw game over screen"""
@@ -554,11 +551,11 @@ class TetrisGame:
         """Draw the entire game"""
         self.display.fill(0)
         
-        # Title
-        title_text = "🎮 TETRIS"
+        # Title - centered at top
+        title_text = "TETRIS"
         if not self.sound.sound_enabled:
-            title_text += " 🔇"
-        self.display.text(title_text, 10, 5, COLOR_TITLE)
+            title_text += " [MUTE]"
+        self.display.text(title_text, 10, 10, COLOR_TITLE)
         
         # Game elements
         self.draw_board()
@@ -644,11 +641,11 @@ class TetrisGame:
         self.spawn_new_piece()
         self.generate_next_piece()
         
-        print("🎮 Game restarted!")
+        print("Game restarted!")
     
     def run(self):
         """Main game loop"""
-        print("🎮 Starting Tetris...")
+        print("Starting Tetris...")
         print("Use arrow keys to play, P to pause, ESC to exit")
         
         try:
