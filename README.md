@@ -8,6 +8,9 @@ A MicroPython firmware and script collection for the Clockwork Pi PicoCalc handh
 - Run SD-card scripts (synth, sample player, tests…)  
 - Flash a ready-to-use UF2 image  
 
+# Youtube PicoCalc Playlist
+- [https://www.youtube.com/playlist?list=PL9WsMKb7awj9qmWcUHpMxpqV1nPUyIeuq]
+
 ---
 
 ## 📂 Repository Structure
