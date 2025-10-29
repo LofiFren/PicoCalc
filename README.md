@@ -82,6 +82,8 @@ MicroPython/
 
 ## ⚙️ Installation
 
+- See Demo on YouTube: - IG: [https://youtu.be/fBSM1_YXDM4] 
+
 ### 1. Enter BOOTSEL mode & flash UF2
 
 1. **Power off** your PicoCalc (unplug USB).  
@@ -99,21 +101,13 @@ MicroPython/
 ### 2. Copy Modules & Scripts
 
 1. Format an SD card to **FAT32** and insert it into the PicoCalc’s SD slot.  
-2. On the Pico’s REPL (via Thonny or another serial terminal), create `/modules/` and `/sd/py_scripts/` folders if they don’t exist (On the PicoCalc):
-   ```python
-   import os
-   os.mkdir('modules') if 'modules' not in os.listdir() else None
-   os.mount(sdcard, '/sd')   # if not auto-mounted
-   os.mkdir('/sd/py_scripts') if 'py_scripts' not in os.listdir('/sd') else None
-   ```
-3. Using Thonny’s **File → Upload** or your OS file explorer:
-   - Copy everything in `modules/` (e.g. `picocalcdisplay/`, `pico_keyboard.py`) into the Pico’s `/modules/` directory.  
-   - Copy `sd/py_scripts/` into the SD card’s `/sd/py_scripts/` folder.
+2. Using Thonny’s **File → Upload** or your OS file explorer:
+   - Copy everything except for firmware and sd (copy sd later after mounting via import boot - see video)
 
 ### 3. Boot & Run
 
 - **Power cycle** the PicoCalc (Turn off then remove micro usb then plug in and power on).  
-- A menu from `boot.py` will appear on the 320×320 screen:  
+- A menu from `boot.py` will appear on the 320×320 screen (this is just an example of menu items):  
   1. Simulator (`sim.py`)  
   2. Synth engine (`synth.py`)  
   3. Test routines (`test_script.py`)  
