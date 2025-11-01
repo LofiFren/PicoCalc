@@ -78,7 +78,7 @@ MicroPython/
 
 ## ⚙️ Installation
 
-- See Full Demo on YouTube: - IG: [https://youtu.be/fBSM1_YXDM4]
+- See Full Demo on YouTube: [https://youtu.be/fBSM1_YXDM4]
 
 # Youtube PicoCalc Playlist
 - [https://www.youtube.com/playlist?list=PL9WsMKb7awj9qmWcUHpMxpqV1nPUyIeuq]
