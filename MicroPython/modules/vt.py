@@ -86,8 +86,11 @@ class vt(uio.IOBase):
             except ValueError:
                 raise ValueError("Non-ASCII character in vtterminal.read()")
 
-        n = self.keyboard.readinto(self.keyboardInput)
-        if n:          
+        try:
+            n = self.keyboard.readinto(self.keyboardInput)
+        except OSError:
+            n = None
+        if n:
             keys = bytes(self.keyboardInput[:n])
             if self.screencaptureKey in keys:
                 self.screencapture()

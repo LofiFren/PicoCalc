@@ -81,7 +81,11 @@ class PicoKeyboard:
         self.ignor = True
         self.address = address
         self.temp=bytearray(2)
-        self.reset()
+        # Do NOT send the reset command (_REG_RST) to the keyboard MCU on
+        # cold/battery boot. The keyboard MCU is also a power-management
+        # controller; resetting it can briefly cut power to the Pico on
+        # battery, causing a hard-reset loop. The MCU is already in its
+        # default state on power-on, so reset is unnecessary here.
         self.isShift = False
         self.isCtrl = False
         self.isAlt = False

@@ -116,7 +116,11 @@ void setpixelLUT1(int32_t x, int32_t y,uint16_t color);
 
 
 void core1_main() {
-  //multicore_lockout_victim_init();
+  // Register Core 1 as a multicore-lockout victim. MicroPython's LittleFS
+  // driver calls multicore_lockout_start_blocking() before programming flash;
+  // without this, Core 0 programs flash while Core 1 executes XIP code,
+  // causing a hard fault / reset on any filesystem write.
+  multicore_lockout_victim_init();
   //static int frame = 0;
   while (1) {
     //if (++frame % 100 == 0) {
