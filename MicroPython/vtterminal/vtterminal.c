@@ -1516,6 +1516,9 @@ static mp_obj_t vtterminal_init(mp_obj_t fb_obj){
     setCursorToHome();
 
     //init the timer and callback
+    // Cancel any existing timer before re-adding; soft reset calls
+    // vtterminal_init() again and without this we leak a timer slot each time.
+    cancel_repeating_timer(&cursor_timer);
     add_repeating_timer_ms(250, dispCursor, NULL, &cursor_timer);
     return mp_const_true;
 }
