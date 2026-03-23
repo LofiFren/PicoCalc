@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PicoCalc Dashboard</title>
+<!-- CodeMirror for Python syntax highlighting + lint (vendored, works offline) -->
+<link rel="stylesheet" href="/static/vendor/codemirror.min.css">
+<link rel="stylesheet" href="/static/vendor/material-darker.min.css">
+<link rel="stylesheet" href="/static/vendor/lint.min.css">
+<script src="/static/vendor/codemirror.min.js"></script>
+<script src="/static/vendor/python.min.js"></script>
+<script src="/static/vendor/lint.min.js"></script>
+<script src="/static/vendor/matchbrackets.min.js"></script>
+<script src="/static/vendor/closebrackets.min.js"></script>
+<style>
+  :root {
+    --bg: #0f0f1a;
+    --panel: #161625;
+    --border: #2a2a40;
+    --text: #e0e0e8;
+    --dim: #6a6a80;
+    --cyan: #00d4ff;
+    --green: #00ff88;
+    --amber: #ffaa00;
+    --red: #ff4466;
+    --blue: #4488ff;
+    --mono: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ─────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 15px; color: var(--cyan); font-weight: 600; }
+  .header-right { display: flex; align-items: center; gap: 10px; }
+  .status { display: flex; align-items: center; gap: 8px; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--red); transition: background 0.3s;
+  }
+  .status-dot.connected { background: var(--green); }
+  .status-dot.busy { background: var(--amber); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: 0.4; } }
+  .status-text { color: var(--dim); font-size: 11px; }
+  .info-bar {
+    display: flex; gap: 16px; font-size: 11px; color: var(--dim);
+  }
+  .info-bar span { color: var(--text); }
+
+  /* ── Buttons ────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 5px 10px; border: 1px solid var(--border); border-radius: 4px;
+    background: transparent; color: var(--text); font-family: var(--mono);
+    font-size: 11px; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--cyan); color: var(--cyan); }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.primary { background: var(--cyan); color: var(--bg); border-color: var(--cyan); font-weight: 600; }
+  .btn.primary:hover { background: #00bbdd; }
+  .btn.sm { padding: 2px 6px; font-size: 10px; }
+
+  /* ── Main dual-pane layout ──────────── */
+  .dual-pane {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+  .pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 150px;
+  }
+  .pane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+  }
+  .pane-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); }
+  .pane-title b { color: var(--cyan); font-weight: 600; }
+  .pane-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+
+  /* ── Center transfer column ─────────── */
+  .transfer-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 4px;
+    gap: 8px;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    min-width: 48px;
+  }
+  .transfer-btn {
+    padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px;
+    background: transparent; color: var(--dim); cursor: pointer;
+    font-family: var(--mono); font-size: 14px; transition: all 0.15s;
+    width: 36px; text-align: center;
+  }
+  .transfer-btn:hover { border-color: var(--cyan); color: var(--cyan); background: rgba(0,212,255,0.05); }
+  .transfer-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* ── File list items ────────────────── */
+  .file-list { list-style: none; }
+  .file-list ul { list-style: none; padding-left: 16px; }
+  .fl-item {
+    display: flex; align-items: center; padding: 3px 12px;
+    cursor: pointer; gap: 6px; font-size: 12px; user-select: none;
+  }
+  .fl-item:hover { background: rgba(255,255,255,0.03); }
+  .fl-item.selected { background: rgba(0, 212, 255, 0.1); }
+  .fl-icon { width: 14px; text-align: center; font-size: 11px; color: var(--dim); flex-shrink: 0; }
+  .fl-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .fl-size { color: var(--dim); font-size: 10px; flex-shrink: 0; }
+  .fl-dir { color: var(--cyan); font-weight: 600; }
+  .fl-actions { display: flex; gap: 3px; flex-shrink: 0; margin-left: 6px; }
+
+  /* ── Bottom panel (editor / console) ── */
+  .bottom-panel {
+    height: 240px;
+    min-height: 80px;
+    border-top: 2px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+  }
+  .bottom-tabs {
+    display: flex; gap: 0; border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .bottom-tab {
+    padding: 5px 14px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--dim); background: none;
+    border: none; border-bottom: 2px solid transparent;
+    cursor: pointer; font-family: var(--mono);
+  }
+  .bottom-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+  .bottom-tab-spacer { flex: 1; }
+  .bottom-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .tab-pane { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+  .tab-pane.active { display: flex; }
+
+  /* Editor */
+  .editor-toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 12px; border-bottom: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .editor-path { color: var(--cyan); flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .editor-modified { color: var(--amber); display: none; }
+  #editorWrap { flex: 1; overflow: hidden; }
+  #editorWrap .CodeMirror {
+    height: 100%;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  /* Fallback textarea if CodeMirror fails to load */
+  #editorArea {
+    flex: 1; width: 100%; background: var(--bg); color: var(--text);
+    font-family: var(--mono); font-size: 12px; line-height: 1.5;
+    border: none; outline: none; padding: 8px 12px; resize: none;
+    tab-size: 4; display: none;
+  }
+
+  /* Console */
+  .console-output {
+    flex: 1; overflow-y: auto; padding: 6px 12px;
+    font-size: 12px; line-height: 1.5;
+  }
+  .console-output .log-ok { color: var(--green); }
+  .console-output .log-err { color: var(--red); }
+  .console-output .log-info { color: var(--cyan); }
+  .console-output .log-dim { color: var(--dim); }
+  .console-input-row {
+    display: flex; border-top: 1px solid var(--border); align-items: center;
+  }
+  .console-prompt { padding: 5px 8px; color: var(--green); font-size: 12px; }
+  .console-input {
+    flex: 1; background: transparent; border: none; color: var(--text);
+    font-family: var(--mono); font-size: 12px; padding: 5px 0; outline: none;
+  }
+
+  /* ── Toast ──────────────────────────── */
+  .toast {
+    position: fixed; bottom: 16px; right: 16px;
+    padding: 8px 16px; border-radius: 4px; font-size: 12px;
+    z-index: 100; opacity: 0; transform: translateY(10px); transition: all 0.3s;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.ok { background: rgba(0,255,136,0.15); border: 1px solid var(--green); color: var(--green); }
+  .toast.err { background: rgba(255,68,102,0.15); border: 1px solid var(--red); color: var(--red); }
+
+  /* ── Cheat sheet ─────────────────────── */
+  .cheat-section {
+    color: var(--cyan); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 1px; margin-top: 8px; margin-bottom: 2px;
+  }
+  .cheat-cmd {
+    font-family: var(--mono); color: var(--text); padding: 2px 8px;
+    border-radius: 3px; cursor: pointer; user-select: all;
+  }
+  .cheat-cmd:hover { background: rgba(0,212,255,0.1); color: var(--cyan); }
+
+  /* ── Drop highlight on device pane ──── */
+  .pane.dragover .pane-body { outline: 2px dashed var(--cyan); outline-offset: -4px; }
+
+  /* ── Modified file shimmer ──────────── */
+  .fl-item.modified .fl-name {
+    color: var(--amber);
+    animation: shimmer 2s ease-in-out infinite;
+  }
+  .fl-item.modified .fl-icon { color: var(--amber); }
+  .fl-item[draggable="true"] { cursor: grab; }
+  .fl-item[draggable="true"]:active { cursor: grabbing; }
+  @keyframes shimmer {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .fl-modified-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--amber); flex-shrink: 0;
+    animation: shimmer 2s ease-in-out infinite;
+  }
+
+  /* ── Resize handles ─────────────────── */
+  .resize-h {
+    width: 5px;
+    cursor: col-resize;
+    background: var(--border);
+    flex-shrink: 0;
+    transition: background 0.15s;
+    z-index: 10;
+  }
+  .resize-h:hover, .resize-h.active { background: var(--cyan); }
+  .resize-v {
+    height: 5px;
+    cursor: row-resize;
+    background: var(--border);
+    flex-shrink: 0;
+    transition: background 0.15s;
+    z-index: 10;
+  }
+  .resize-v:hover, .resize-v.active { background: var(--cyan); }
+  body.resizing { cursor: col-resize; user-select: none; }
+  body.resizing-v { cursor: row-resize; user-select: none; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────── -->
+<header>
+  <h1>PICOCALC DASHBOARD</h1>
+  <div class="info-bar">
+    RAM <span id="infoRam">--</span>
+    SD <span id="infoSd">--</span>
+    FW <span id="infoFw">--</span>
+  </div>
+  <div class="header-right">
+    <div class="status">
+      <span class="status-text" id="statusText">Connecting...</span>
+      <div class="status-dot" id="statusDot"></div>
+    </div>
+    <button class="btn" onclick="deploy('all')">Deploy All</button>
+    <button class="btn" onclick="cleanupDevice()">Cleanup</button>
+    <button class="btn" onclick="resetDevice()">Reset</button>
+  </div>
+</header>
+
+<!-- ── Dual Pane ───────────────────────────────────────────────── -->
+<div class="dual-pane">
+
+  <!-- LOCAL pane -->
+  <div class="pane" id="localPane">
+    <div class="pane-header">
+      <span class="pane-title"><b>Local</b> (project files)</span>
+      <div style="display:flex;gap:4px">
+        <button class="btn sm" onclick="deploy('boot')">Boot</button>
+        <button class="btn sm" onclick="deploy('modules')">Modules</button>
+        <button class="btn sm" onclick="deploy('scripts')">Scripts</button>
+      </div>
+    </div>
+    <div class="pane-body">
+      <ul class="file-list" id="localTree"></ul>
+    </div>
+  </div>
+
+  <!-- Horizontal resize handle -->
+  <div class="resize-h" id="resizeH"></div>
+
+  <!-- Transfer column -->
+  <div class="transfer-col">
+    <button class="transfer-btn" id="btnPushFile" onclick="pushSelected()" disabled title="Push to device">&raquo;</button>
+    <button class="transfer-btn" id="btnDiffFile" onclick="diffSelected()" disabled title="Compare files">&#x2194;</button>
+    <button class="transfer-btn" id="btnPullFile" onclick="pullSelected()" disabled title="Pull from device">&laquo;</button>
+  </div>
+
+  <!-- DEVICE pane -->
+  <div class="pane" id="devicePane"
+       ondragover="event.preventDefault(); this.classList.add('dragover')"
+       ondragleave="this.classList.remove('dragover')"
+       ondrop="handlePaneDrop(event)">
+    <div class="pane-header">
+      <span class="pane-title"><b>Device</b> (PicoCalc)</span>
+      <button class="btn sm" onclick="refreshDeviceTree()">Refresh</button>
+    </div>
+    <div class="pane-body">
+      <ul class="file-list" id="deviceTree"></ul>
+    </div>
+  </div>
+
+</div>
+
+<!-- Vertical resize handle -->
+<div class="resize-v" id="resizeV"></div>
+
+<!-- ── Bottom Panel (Editor / Log / REPL) ──────────────────────── -->
+<div class="bottom-panel" id="bottomPanel">
+  <div class="bottom-tabs">
+    <button class="bottom-tab active" onclick="switchTab('editor')">Editor</button>
+    <button class="bottom-tab" onclick="switchTab('log')">Log</button>
+    <button class="bottom-tab" onclick="switchTab('repl')">REPL</button>
+    <button class="bottom-tab" id="tabCheat" onclick="toggleCheatSheet()" style="display:none">Cheatsheet</button>
+    <span class="bottom-tab-spacer"></span>
+    <span class="editor-modified" id="editorModified">modified</span>
+  </div>
+  <div class="bottom-content">
+
+    <!-- Editor tab -->
+    <div class="tab-pane active" id="pane-editor">
+      <div class="editor-toolbar">
+        <span class="editor-path" id="editorPath">No file selected</span>
+        <button class="btn sm" id="btnSave" onclick="saveFile()" disabled>Save to Device</button>
+        <button class="btn sm" id="btnSaveLocal" onclick="saveFileLocal()" disabled>Save Local</button>
+      </div>
+      <div id="editorWrap"></div>
+      <textarea id="editorArea" style="display:none"></textarea>
+    </div>
+
+    <!-- Log tab -->
+    <div class="tab-pane" id="pane-log">
+      <div class="console-output" id="logOutput"></div>
+    </div>
+
+    <!-- REPL tab -->
+    <div class="tab-pane" id="pane-repl">
+      <div class="console-output" id="replOutput"></div>
+      <div id="replCheatPanel" style="display:none; border-top:1px solid var(--border); max-height:50%; overflow-y:auto; padding:8px 12px; font-size:11px; line-height:2; background:var(--bg)">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px">
+          <span style="color:var(--cyan); font-size:11px; text-transform:uppercase; letter-spacing:1px">REPL Cheat Sheet</span>
+          <button class="btn sm" onclick="document.getElementById('replCheatPanel').style.display='none'">close</button>
+        </div>
+        <div class="cheat-section">Run Scripts</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="exec(open('/sd/py_scripts/demo.py').read())">exec(open('/sd/py_scripts/demo.py').read())</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="exec(open('/sd/py_scripts/tetris.py').read())">exec(open('/sd/py_scripts/tetris.py').read())</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="from py_run import main_menu; main_menu()">from py_run import main_menu; main_menu()</div>
+        <div class="cheat-section">Device Info</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import gc; gc.collect(); print(f'Free: {gc.mem_free()} bytes')">import gc; gc.collect(); print(f'Free: {gc.mem_free()} bytes')</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import sys; print(sys.implementation)">import sys; print(sys.implementation)</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import machine; print(f'CPU: {machine.freq()//1000000}MHz')">import machine; print(f'CPU: {machine.freq()//1000000}MHz')</div>
+        <div class="cheat-section">File System</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import os; print(os.listdir('/'))">import os; print(os.listdir('/'))</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import os; print(os.listdir('/modules'))">import os; print(os.listdir('/modules'))</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import os; print(os.listdir('/sd/py_scripts'))">import os; print(os.listdir('/sd/py_scripts'))</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import os; s=os.statvfs('/sd'); print(f'SD: {s[0]*s[3]//1024//1024}MB free')">import os; s=os.statvfs('/sd'); print(f'SD: {s[0]*s[3]//1024//1024}MB free')</div>
+        <div class="cheat-section">File Operations</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import os; os.rename('/boot_thonny.py', '/boot.py')">import os; os.rename('/boot_thonny.py', '/boot.py')</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import os; os.remove('/cleanup.py')">import os; os.remove('/cleanup.py')</div>
+        <div class="cheat-section">WiFi</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="from brad import connect; connect()">from brad import connect; connect()</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="from brad import status; status()">from brad import status; status()</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="from brad import scan; scan()">from brad import scan; scan()</div>
+        <div class="cheat-section">Reset</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import machine; machine.soft_reset()">import machine; machine.soft_reset()</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import machine; machine.reset()">import machine; machine.reset()</div>
+      </div>
+      <div class="console-input-row">
+        <span class="console-prompt">&gt;&gt;&gt;</span>
+        <input class="console-input" id="replLine" placeholder="Enter Python..."
+               onkeydown="handleReplKey(event)">
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="fileInput" accept=".py" style="display:none" onchange="handleFilePick(event)">
+
+<script>
+// ── State ────────────────────────────────────────────────────────
+let connected = false, busy = false;
+let localSelected = null;   // relative path like "modules/picocalc.py"
+let deviceSelected = null;  // absolute path like "/modules/picocalc.py"
+let editorSource = null;    // {side: 'local'|'device', path: '...'}
+let editorOriginal = '';
+let replHistory = [], historyIdx = -1;
+
+// ── Helpers ──────────────────────────────────────────────────────
+function fmt(b) {
+  if (b >= 1073741824) return (b/1073741824).toFixed(1)+' GB';
+  if (b >= 1048576) return (b/1048576).toFixed(1)+' MB';
+  if (b >= 1024) return (b/1024).toFixed(1)+' KB';
+  return b+' B';
+}
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toast(msg, type='ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast '+type+' show';
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+function log(msg, cls='') {
+  const out = document.getElementById('logOutput');
+  const el = document.createElement('div');
+  if (cls) el.className = cls;
+  el.textContent = msg; out.appendChild(el); out.scrollTop = out.scrollHeight;
+}
+function setBusy(b) {
+  busy = b;
+  document.getElementById('statusDot').classList.toggle('busy', b);
+}
+async function api(path, opts={}) {
+  try { return await (await fetch(path, opts)).json(); }
+  catch(e) { return {error: e.message}; }
+}
+
+// ── Device polling ───────────────────────────────────────────────
+async function pollDevice() {
+  const d = await api('/api/device');
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  const wasConnected = connected;
+  if (d.connected) {
+    connected = true;
+    if (!busy) dot.className = 'status-dot connected';
+    txt.textContent = 'Connected';
+    document.getElementById('infoRam').textContent = d.ram_free ? fmt(d.ram_free) : '--';
+    document.getElementById('infoSd').textContent = d.sd_free ? fmt(d.sd_free) : '--';
+    document.getElementById('infoFw').textContent = d.version || '--';
+    // Auto-refresh device tree on new connection
+    if (!wasConnected) {
+      log('Device connected — loading files...', 'log-info');
+      buildDeviceTree();
+    }
+  } else {
+    connected = false; dot.className = 'status-dot';
+    txt.textContent = 'Disconnected';
+  }
+}
+
+// ── Local file tree ──────────────────────────────────────────────
+async function buildLocalTree() {
+  const data = await api('/api/local/tree');
+  const ul = document.getElementById('localTree');
+  ul.innerHTML = '';
+
+  function addGroup(label, files) {
+    const li = document.createElement('li');
+    const hdr = document.createElement('div');
+    hdr.className = 'fl-item'; hdr.innerHTML = `<span class="fl-icon">&#x25BE;</span><span class="fl-name fl-dir">${label}</span>`;
+    li.appendChild(hdr);
+    const sub = document.createElement('ul');
+    for (const f of files) {
+      const fli = document.createElement('li');
+      const item = document.createElement('div');
+      item.dataset.path = f.name;
+
+      // Server tells us: "match", "modified", or "missing"
+      const needsPush = f.status === 'modified' || f.status === 'missing';
+      item.className = 'fl-item' + (needsPush ? ' modified' : '');
+
+      let indicator = '';
+      if (f.status === 'missing') indicator = '<span class="fl-modified-dot" title="Not on device"></span>';
+      else if (f.status === 'modified') indicator = '<span class="fl-modified-dot" title="Size differs from device"></span>';
+
+      item.innerHTML = `<span class="fl-icon">&#x25AB;</span><span class="fl-name">${f.name.split('/').pop()}</span>${indicator}<span class="fl-size">${fmt(f.size)}</span><button class="btn sm" style="margin-left:6px" onclick="event.stopPropagation(); pushFile('${f.name}')">push</button><button class="btn sm" onclick="event.stopPropagation(); openLocalFile('${f.name}')">edit</button>`;
+      item.draggable = true;
+      item.ondragstart = (e) => {
+        e.dataTransfer.setData('text/x-local-path', f.name);
+        e.dataTransfer.effectAllowed = 'copy';
+        document.getElementById('devicePane').classList.add('dragover');
+      };
+      item.ondragend = () => {
+        document.getElementById('devicePane').classList.remove('dragover');
+      };
+      item.onclick = () => selectLocal(f.name, item);
+      item.ondblclick = () => openLocalFile(f.name);
+      fli.appendChild(item);
+      sub.appendChild(fli);
+    }
+    hdr.onclick = () => { sub.style.display = sub.style.display === 'none' ? 'block' : 'none'; };
+    li.appendChild(sub);
+    ul.appendChild(li);
+  }
+
+  if (data.boot) addGroup('boot', data.boot);
+  if (data.modules) addGroup('modules/', data.modules);
+  if (data.scripts) addGroup('sd/py_scripts/', data.scripts);
+}
+
+function selectLocal(path, el) {
+  document.querySelectorAll('#localTree .fl-item.selected').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+  localSelected = path;
+  updateTransferButtons();
+}
+
+async function openLocalFile(relPath) {
+  const data = await api('/api/local/file?path=' + encodeURIComponent(relPath));
+  if (data.error) { toast(data.error, 'err'); return; }
+  openEditor('local', relPath, data.content);
+}
+
+// ── Device file tree ─────────────────────────────────────────────
+let _buildingDeviceTree = false;
+async function buildDeviceTree() {
+  if (_buildingDeviceTree) return;  // Prevent concurrent builds
+  _buildingDeviceTree = true;
+  try {
+    const ul = document.getElementById('deviceTree');
+    ul.innerHTML = '';
+    // Only load root — sd/ and its children are navigable via click
+    await addDeviceDir(ul, '/', true);
+  } finally {
+    _buildingDeviceTree = false;
+  }
+}
+
+async function addDeviceDir(parent, path, expanded) {
+  const data = await api('/api/files?path=' + encodeURIComponent(path));
+  const files = data.files || [];
+
+  const li = document.createElement('li');
+  const hdr = document.createElement('div');
+  hdr.className = 'fl-item';
+  hdr.innerHTML = `<span class="fl-icon">${expanded ? '&#x25BE;' : '&#x25B8;'}</span><span class="fl-name fl-dir">${path}</span>`;
+  li.appendChild(hdr);
+
+  const sub = document.createElement('ul');
+  sub.style.display = expanded ? 'block' : 'none';
+
+  for (const f of files) {
+    const fullPath = path.replace(/\/$/, '') + '/' + f.name;
+    const fli = document.createElement('li');
+
+    if (f.type === 'd') {
+      const dirItem = document.createElement('div');
+      dirItem.className = 'fl-item';
+      dirItem.innerHTML = `<span class="fl-icon">&#x25B8;</span><span class="fl-name fl-dir">${f.name}/</span><button class="btn sm" style="margin-left:6px; color:var(--red)" onclick="event.stopPropagation(); deleteDeviceDir('${fullPath}')">del</button>`;
+      let loaded = false;
+      dirItem.onclick = async (e) => {
+        e.stopPropagation();
+        if (!loaded) {
+          await addDeviceDir(fli, fullPath, true);
+          loaded = true;
+          dirItem.querySelector('.fl-icon').innerHTML = '&#x25BE;';
+        } else {
+          const s = fli.querySelector('ul');
+          if (s) { s.style.display = s.style.display === 'none' ? 'block' : 'none'; }
+        }
+      };
+      fli.appendChild(dirItem);
+    } else {
+      const item = document.createElement('div');
+      item.className = 'fl-item';
+      item.dataset.path = fullPath;
+      item.innerHTML = `
+        <span class="fl-icon">&#x25AB;</span>
+        <span class="fl-name">${f.name}</span>
+        <span class="fl-size">${f.size > 0 ? fmt(f.size) : ''}</span>
+        <button class="btn sm" style="margin-left:6px" onclick="event.stopPropagation(); pullDeviceFile('${fullPath}')">pull</button>
+        <button class="btn sm" onclick="event.stopPropagation(); editDeviceFile('${fullPath}')">edit</button>
+        <button class="btn sm" style="color:var(--red)" onclick="event.stopPropagation(); deleteDeviceFile('${fullPath}')">del</button>
+      `;
+      item.onclick = () => selectDevice(fullPath, item);
+      item.ondblclick = () => editDeviceFile(fullPath);
+      fli.appendChild(item);
+    }
+    sub.appendChild(fli);
+  }
+
+  hdr.onclick = () => { sub.style.display = sub.style.display === 'none' ? 'block' : 'none'; };
+  li.appendChild(sub);
+  parent.appendChild(li);
+}
+
+function selectDevice(path, el) {
+  document.querySelectorAll('#deviceTree .fl-item.selected').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+  deviceSelected = path;
+  updateTransferButtons();
+}
+
+async function editDeviceFile(path) {
+  log('Reading device:' + path, 'log-dim');
+  const data = await api('/api/file?path=' + encodeURIComponent(path));
+  if (data.error) { toast(data.error, 'err'); return; }
+  openEditor('device', path, data.content);
+}
+
+async function deleteDeviceFile(path) {
+  if (!confirm('Delete ' + path + ' from device?')) return;
+  setBusy(true);
+  const data = await api('/api/file?path=' + encodeURIComponent(path), {method: 'DELETE'});
+  setBusy(false);
+  if (data.ok) { toast('Deleted ' + path); log('Deleted: ' + path, 'log-ok'); await buildDeviceTree(); await buildLocalTree(); }
+  else { toast('Delete failed', 'err'); }
+}
+
+async function deleteDeviceDir(path) {
+  if (!confirm('Delete directory ' + path + ' and ALL its contents from device?')) return;
+  setBusy(true);
+  log('Deleting directory ' + path + '...', 'log-info');
+  const data = await api('/api/dir?path=' + encodeURIComponent(path), {method: 'DELETE'});
+  setBusy(false);
+  if (data.ok) { toast('Deleted ' + path); log('Deleted directory: ' + path, 'log-ok'); await buildDeviceTree(); await buildLocalTree(); }
+  else { toast('Delete failed', 'err'); log('Failed to delete: ' + path, 'log-err'); }
+}
+
+// ── Transfer buttons ─────────────────────────────────────────────
+function updateTransferButtons() {
+  document.getElementById('btnPushFile').disabled = !localSelected;
+  document.getElementById('btnDiffFile').disabled = !localSelected;
+  document.getElementById('btnPullFile').disabled = !deviceSelected;
+}
+
+async function pushFile(localRel) {
+  log('Pushing ' + localRel + '...', 'log-info');
+  setBusy(true);
+  const data = await api('/api/push', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({file: localRel})
+  });
+  setBusy(false);
+  if (data.ok) {
+    log('OK: ' + localRel + ' -> ' + data.remote, 'log-ok');
+    toast('Pushed ' + localRel);
+    await buildDeviceTree();
+    await buildLocalTree();
+  } else {
+    log('Failed: ' + (data.msg || data.error), 'log-err');
+    toast('Push failed', 'err');
+  }
+}
+
+async function pushSelected() {
+  if (!localSelected) return;
+  await pushFile(localSelected);
+}
+
+async function pullDeviceFile(devicePath) {
+  log('Pulling ' + devicePath + '...', 'log-info');
+  setBusy(true);
+  const data = await api('/api/pull', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({device_path: devicePath})
+  });
+  setBusy(false);
+  if (data.ok) {
+    log('Pulled: ' + devicePath + ' -> ' + data.local, 'log-ok');
+    toast('Pulled ' + data.local);
+    await buildLocalTree();
+  } else {
+    log('Pull failed: ' + (data.error || ''), 'log-err');
+    toast('Pull failed', 'err');
+  }
+}
+
+async function pullSelected() {
+  if (!deviceSelected) return;
+  await pullDeviceFile(deviceSelected);
+}
+
+async function diffSelected() {
+  if (!localSelected) return;
+  log('Diff: ' + localSelected, 'log-dim');
+  setBusy(true);
+  const data = await api('/api/diff?file=' + encodeURIComponent(localSelected));
+  setBusy(false);
+  if (data.error) { toast(data.error, 'err'); return; }
+  switchTab('editor');
+  document.getElementById('editorPath').textContent = 'Diff: ' + localSelected;
+  document.getElementById('btnSave').disabled = true;
+  document.getElementById('btnSaveLocal').disabled = true;
+  editorSource = null;
+  if (data.identical) {
+    editorSetValue('Files are identical.', true);
+  } else {
+    editorSetValue(data.diff, true);
+  }
+}
+
+// ── Editor (CodeMirror) ──────────────────────────────────────────
+let cm = null;
+
+let lintTimer = null;
+
+function picoLinter(text, updateLinting) {
+  clearTimeout(lintTimer);
+  lintTimer = setTimeout(async () => {
+    try {
+      const data = await api('/api/lint', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({code: text})
+      });
+      if (!data.issues) { updateLinting([]); return; }
+      updateLinting(data.issues.map(issue => ({
+        from: CodeMirror.Pos(issue.line - 1, issue.ch || 0),
+        to: CodeMirror.Pos(issue.line - 1),
+        message: issue.message,
+        severity: issue.severity || 'warning',
+      })));
+    } catch(e) { updateLinting([]); }
+  }, 800);
+}
+
+function initEditor() {
+  if (typeof CodeMirror !== 'undefined') {
+    CodeMirror.registerHelper('lint', 'python', picoLinter);
+    cm = CodeMirror(document.getElementById('editorWrap'), {
+      mode: 'python',
+      theme: 'material-darker',
+      lineNumbers: true,
+      indentUnit: 4,
+      tabSize: 4,
+      indentWithTabs: false,
+      matchBrackets: true,
+      autoCloseBrackets: true,
+      readOnly: true,
+      lint: { async: true },
+      gutters: ['CodeMirror-lint-markers', 'CodeMirror-linenumbers'],
+    });
+    cm.on('change', () => {
+      if (!editorSource) return;
+      const modified = cm.getValue() !== editorOriginal;
+      document.getElementById('editorModified').style.display = modified ? 'inline' : 'none';
+      document.getElementById('btnSave').disabled = editorSource.side !== 'device' || !modified;
+      document.getElementById('btnSaveLocal').disabled = editorSource.side !== 'local' || !modified;
+    });
+  } else {
+    // Fallback: show textarea if vendor files missing
+    document.getElementById('editorArea').style.display = 'block';
+    document.getElementById('editorWrap').style.display = 'none';
+  }
+}
+
+function editorGetValue() {
+  return cm ? cm.getValue() : document.getElementById('editorArea').value;
+}
+
+function editorSetValue(content, readOnly) {
+  if (cm) {
+    cm.setOption('readOnly', readOnly);
+    cm.setValue(content);
+    cm.clearHistory();
+    setTimeout(() => cm.refresh(), 10);
+  } else {
+    const area = document.getElementById('editorArea');
+    area.value = content;
+    area.disabled = readOnly;
+    area.style.display = 'block';
+  }
+}
+
+function openEditor(side, path, content) {
+  switchTab('editor');
+  editorSource = {side, path};
+  editorOriginal = content;
+  editorSetValue(content, false);
+  document.getElementById('editorPath').textContent = (side === 'device' ? 'device:' : 'local:') + path;
+  document.getElementById('btnSave').disabled = side !== 'device';
+  document.getElementById('btnSaveLocal').disabled = side !== 'local';
+  document.getElementById('editorModified').style.display = 'none';
+}
+
+async function saveFile() {
+  if (!editorSource || editorSource.side !== 'device') return;
+  const content = editorGetValue();
+  log('Saving to device:' + editorSource.path + '...', 'log-info');
+  setBusy(true);
+  const data = await api('/api/file', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({path: editorSource.path, content})
+  });
+  setBusy(false);
+  if (data.ok) {
+    editorOriginal = content;
+    document.getElementById('editorModified').style.display = 'none';
+    document.getElementById('btnSave').disabled = true;
+    log('Saved: ' + editorSource.path, 'log-ok');
+    toast('Saved to device');
+    await buildDeviceTree(); await buildLocalTree();
+  } else {
+    log('Save failed: ' + (data.msg || data.error), 'log-err');
+    toast('Save failed', 'err');
+  }
+}
+
+async function saveFileLocal() {
+  if (!editorSource || editorSource.side !== 'local') return;
+  const content = editorGetValue();
+  log('Saving local: ' + editorSource.path + '...', 'log-info');
+  setBusy(true);
+  const data = await api('/api/local/file', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({path: editorSource.path, content})
+  });
+  setBusy(false);
+  if (data.ok) {
+    editorOriginal = content;
+    document.getElementById('editorModified').style.display = 'none';
+    document.getElementById('btnSaveLocal').disabled = true;
+    log('Saved: ' + editorSource.path, 'log-ok');
+    toast('Saved locally');
+    await buildLocalTree();
+  } else {
+    log('Save failed: ' + (data.error || ''), 'log-err');
+    toast('Save failed', 'err');
+  }
+}
+
+// ── Deploy ───────────────────────────────────────────────────────
+async function deploy(target) {
+  log('Deploy: ' + target + '...', 'log-info');
+  setBusy(true); switchTab('log');
+  const start = Date.now();
+  const data = await api('/api/deploy/' + target, {method:'POST'});
+  const elapsed = ((Date.now()-start)/1000).toFixed(1);
+  setBusy(false);
+  if (data.error) { log('Failed: ' + data.error, 'log-err'); toast('Deploy failed', 'err'); return; }
+  for (const r of (data.results||[])) log((r.ok?'  OK ':'  FAIL ')+r.file, r.ok?'log-ok':'log-err');
+  log(data.summary + ' (' + elapsed + 's)', 'log-info');
+  toast(data.summary);
+  await buildDeviceTree();
+  await buildLocalTree();  // Update modified indicators
+  pollDevice();
+}
+
+// ── Cleanup macOS junk ───────────────────────────────────────────
+async function cleanupDevice() {
+  log('Cleaning junk files (macOS litter, stale v1.0 dirs)...', 'log-info');
+  setBusy(true); switchTab('log');
+  const data = await api('/api/cleanup', {method:'POST'});
+  setBusy(false);
+  if (data.error) { log('Cleanup failed: ' + data.error, 'log-err'); toast('Cleanup failed', 'err'); return; }
+  if (data.count > 0) {
+    for (const r of data.removed) log('  Removed: ' + r, 'log-ok');
+    log(data.summary, 'log-info');
+    toast(data.summary);
+    buildDeviceTree();
+  } else {
+    log('Device is clean — no macOS junk found', 'log-ok');
+    toast('Already clean');
+  }
+}
+
+// ── Reset ────────────────────────────────────────────────────────
+async function resetDevice() {
+  log('Resetting...', 'log-info'); setBusy(true);
+  await api('/api/reset', {method:'POST'}); setBusy(false);
+  log('Reset sent.', 'log-ok'); toast('Device reset');
+  setTimeout(pollDevice, 3000);
+}
+
+// ── Drag and drop onto device pane ───────────────────────────────
+async function handlePaneDrop(e) {
+  e.preventDefault();
+  document.getElementById('devicePane').classList.remove('dragover');
+
+  // Check if this is a local-file drag (from left pane)
+  const localPath = e.dataTransfer.getData('text/x-local-path');
+  if (localPath) {
+    await pushFile(localPath);
+    return;
+  }
+
+  // Otherwise it's an external file drop from the OS
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  if (!file.name.endsWith('.py')) { toast('Only .py files', 'err'); return; }
+  log('Uploading ' + file.name + '...', 'log-info'); setBusy(true);
+  const fd = new FormData(); fd.append('file', file); fd.append('dest', '/sd/py_scripts/');
+  const data = await api('/api/upload', {method:'POST', body: fd}); setBusy(false);
+  if (data.ok) {
+    log('Uploaded: ' + file.name + ' -> ' + data.remote, 'log-ok');
+    toast('Uploaded ' + file.name); await buildDeviceTree(); await buildLocalTree();
+  } else { log('Upload failed', 'log-err'); toast('Upload failed', 'err'); }
+}
+function handleFilePick(e) {
+  const file = e.target.files[0];
+  if (file) handlePaneDrop({preventDefault:()=>{}, dataTransfer:{files:[file]}});
+  e.target.value = '';
+}
+
+// ── REPL ─────────────────────────────────────────────────────────
+async function handleReplKey(e) {
+  if (e.key === 'Enter') { sendRepl(); }
+  else if (e.key === 'ArrowUp' && replHistory.length) {
+    historyIdx = Math.max(0, historyIdx-1); e.target.value = replHistory[historyIdx]||''; e.preventDefault();
+  } else if (e.key === 'ArrowDown') {
+    historyIdx = Math.min(replHistory.length, historyIdx+1); e.target.value = replHistory[historyIdx]||''; e.preventDefault();
+  }
+}
+async function sendRepl() {
+  const input = document.getElementById('replLine');
+  const code = input.value.trim(); if (!code) return;
+  replHistory.push(code); historyIdx = replHistory.length; input.value = '';
+  const out = document.getElementById('replOutput');
+  const p = document.createElement('div');
+  p.innerHTML = '<span style="color:var(--green)">&gt;&gt;&gt;</span> ' + esc(code);
+  out.appendChild(p);
+  const data = await api('/api/exec', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code})});
+  if (data.out) { const l = document.createElement('div'); l.textContent = data.out.trimEnd(); out.appendChild(l); }
+  if (data.err) { const l = document.createElement('div'); l.className='log-err'; l.textContent = data.err.trimEnd(); out.appendChild(l); }
+  out.scrollTop = out.scrollHeight;
+}
+
+// ── REPL cheat sheet ─────────────────────────────────────────────
+async function runCheat(code) {
+  document.getElementById('replCheatPanel').style.display = 'none';
+  document.getElementById('replLine').value = code;
+  await sendRepl();
+}
+
+function toggleCheatSheet() {
+  const panel = document.getElementById('replCheatPanel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+// ── Tab switching ────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.bottom-tab').forEach((t,i) => {
+    const tabs = ['editor','log','repl'];
+    t.classList.toggle('active', tabs[i] === name);
+  });
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('pane-'+name).classList.add('active');
+  document.getElementById('tabCheat').style.display = name === 'repl' ? 'inline' : 'none';
+  if (name !== 'repl') document.getElementById('replCheatPanel').style.display = 'none';
+  if (name === 'repl') document.getElementById('replLine').focus();
+}
+
+// ── Refresh ──────────────────────────────────────────────────────
+async function refreshDeviceTree() {
+  log('Refreshing device files...', 'log-dim');
+  await buildDeviceTree();
+  await buildLocalTree();  // Re-compare after device tree update
+  log('Refreshed.', 'log-ok');
+}
+
+// ── Resizable panels ─────────────────────────────────────────────
+(function() {
+  // Horizontal splitter: resize left/right panes
+  const hHandle = document.getElementById('resizeH');
+  const localPane = document.getElementById('localPane');
+  const devicePane = document.getElementById('devicePane');
+  const dualPane = document.querySelector('.dual-pane');
+
+  hHandle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    document.body.classList.add('resizing');
+    hHandle.classList.add('active');
+    const startX = e.clientX;
+    const startW = localPane.getBoundingClientRect().width;
+    const totalW = dualPane.getBoundingClientRect().width;
+
+    function onMove(e) {
+      const delta = e.clientX - startX;
+      const newW = Math.max(150, Math.min(totalW - 200, startW + delta));
+      const pct = (newW / totalW) * 100;
+      localPane.style.flex = 'none';
+      localPane.style.width = pct + '%';
+      devicePane.style.flex = '1';
+    }
+    function onUp() {
+      document.body.classList.remove('resizing');
+      hHandle.classList.remove('active');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // Vertical splitter: resize file panes vs bottom panel
+  const vHandle = document.getElementById('resizeV');
+  const bottomPanel = document.getElementById('bottomPanel');
+
+  vHandle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    document.body.classList.add('resizing-v');
+    vHandle.classList.add('active');
+    const startY = e.clientY;
+    const startH = bottomPanel.getBoundingClientRect().height;
+    const viewH = window.innerHeight;
+
+    function onMove(e) {
+      const delta = startY - e.clientY;
+      const newH = Math.max(80, Math.min(viewH - 150, startH + delta));
+      bottomPanel.style.height = newH + 'px';
+    }
+    function onUp() {
+      document.body.classList.remove('resizing-v');
+      vHandle.classList.remove('active');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+})();
+
+// ── Init ─────────────────────────────────────────────────────────
+async function init() {
+  initEditor();
+  log('PicoCalc Dashboard started', 'log-info');
+  await pollDevice();
+  await buildDeviceTree();   // Device first so local can compare
+  await buildLocalTree();    // Then local with modified indicators
+  setInterval(pollDevice, 5000);
+  setInterval(buildLocalTree, 10000);  // Re-scan local files every 10s
+}
+init();
+</script>
+</body>
+</html>

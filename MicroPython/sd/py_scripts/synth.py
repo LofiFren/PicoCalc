@@ -207,7 +207,7 @@ class AdvancedSynth:
     
     def update_display(self):
         """Update display with enhanced visuals"""
-        # Clear display
+        self.display.beginDraw()
         self.display.fill(COLOR_BACKGROUND)
         
         # Enhanced header with output indicator
@@ -605,7 +605,7 @@ class AdvancedSynth:
         key_data = bytes(self.key_buffer[:count])
         
         # Check for ESC key (exit)
-        if key_data == KEY_ESC:
+        if key_data == KEY_ESC or (count == 1 and self.key_buffer[0] == 0x1b):
             self.exit_synth()
             return "EXIT"
         
@@ -673,11 +673,11 @@ class AdvancedSynth:
         """Clean up before exiting"""
         if self.is_playing:
             self.stop_note()
-        
+
         self.display.fill(COLOR_BACKGROUND)
         self.display.text("Exiting Advanced Synthesizer...", 10, 10, COLOR_TEXT)
         self.display.show()
-        
+
         print("Exiting Advanced Synthesizer 3.0...")
         utime.sleep(1)
     

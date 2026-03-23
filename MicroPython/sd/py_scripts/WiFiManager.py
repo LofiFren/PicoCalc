@@ -1,817 +1,850 @@
-from brad import connect, load_wifi
+"""
+WiFi Manager - Network scanner, connector, and analyzer
+Features:
+- Arrow-key navigable menus
+- Visual signal strength bars
+- Auto-connect to saved networks
+- Channel congestion analysis
+- Real-time signal monitor
+"""
 import network
-import time
+import picocalc
+import utime
+import gc
+import json
 
-LOG_FILE = "/sd/logs/wifi_log.txt"
-SCAN_TIMEOUT = 5  # seconds
-MAX_RETRIES = 3
+# ── VT100 helpers (same pattern as py_run.py) ─────────────────────
+_E = '\033'
+_BLK, _RED, _GRN, _YEL, _BLU, _MAG, _CYN, _WHT = range(8)
+_W = 53
+_H = 40
 
-def log_to_file(line):
-    """Log WiFi scan results to file with proper error handling"""
-    try:
-        # Create directory if it doesn't exist
-        try:
-            import os
-            os.makedirs("/sd/logs", exist_ok=True)
-        except:
-            pass
-        
-        with open(LOG_FILE, "a") as f:
-            f.write(f"{time.time()}: {line}\n")
-            f.flush()  # Ensure data is written
-    except Exception as e:
-        # Silently fail - logging should not crash the app
-        print(f"[Log warning: {e}]")
+def _w(s):
+    picocalc.terminal.wr(s)
 
-def read_password(prompt="Enter password: "):
-    pwd = input(prompt)
-    print("✓ Password entered.\n")
-    return pwd
+def _clr():
+    _w(f'{_E}[2J{_E}[H')
 
-def connect_to_saved_network(wlan):
-    ssid, password = load_wifi()
-    if ssid:
-        print(f" Auto-connecting to: {ssid}")
-        if connect(ssid, password):
-            print(f" Connected to {ssid}")
-            return True
-        else:
-            print(f" Failed to connect to saved network: {ssid}")
+def _at(r, c):
+    _w(f'{_E}[{r};{c}H')
+
+def _style(fg=None, bg=None, bold=False, dim=False):
+    codes = []
+    if bold: codes.append('1')
+    if dim: codes.append('2')
+    if fg is not None: codes.append(str(30 + fg))
+    if bg is not None: codes.append(str(40 + bg))
+    if codes:
+        _w(f'{_E}[{";".join(codes)}m')
+
+def _rst():
+    _w(f'{_E}[0m')
+
+def _cll():
+    _w(f'{_E}[K')
+
+def _cursor(show=True):
+    _w(f'{_E}[?25{"h" if show else "l"}')
+
+def _box_h(n):
+    _w('\x0e' + 'q' * n + '\x0f')
+
+def _signal_bars(rssi):
+    """Return signal bar string and color for RSSI value."""
+    if rssi >= -50:
+        return '\x0eaaaa\x0f', _GRN     # Excellent
+    elif rssi >= -60:
+        return '\x0eaaa\x0f ', _GRN     # Good
+    elif rssi >= -70:
+        return '\x0eaa\x0f  ', _YEL     # Fair
+    elif rssi >= -80:
+        return '\x0ea\x0f   ', _RED     # Weak
     else:
-        print(" No saved Wi-Fi credentials found.")
-    return False
+        return '    ', _RED              # Very weak
 
-def get_input(prompt):
-    print(prompt)
-    return input().strip()
+def _signal_label(rssi):
+    if rssi >= -50: return 'Excellent'
+    elif rssi >= -60: return 'Good'
+    elif rssi >= -70: return 'Fair'
+    else: return 'Weak'
 
-def disconnect(wlan):
-    if wlan.isconnected():
-        wlan.disconnect()
-        print(" Disconnected from current Wi-Fi.")
+def _sec_str(auth):
+    return {0: 'Open', 1: 'WEP', 2: 'WPA', 3: 'WPA2', 4: 'WPA/2', 5: 'WPA3'}.get(auth, '?')
 
-def scan_wifi_detailed(compact=False):
-    """Enhanced WiFi scanning with timeout and retry mechanism"""
+
+# ── WiFi helpers ──────────────────────────────────────────────────
+
+def _load_creds():
+    try:
+        with open('wifi.json', 'r') as f:
+            c = json.load(f)
+        return c.get('ssid', ''), c.get('password', '')
+    except:
+        return '', ''
+
+def _save_creds(ssid, pwd):
+    with open('wifi.json', 'w') as f:
+        json.dump({'ssid': ssid, 'password': pwd}, f)
+
+def _get_wlan():
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
-    
-    print("\nScanning for Wi-Fi networks...")
-    
-    # Try scanning with retries
-    results = []
-    for attempt in range(MAX_RETRIES):
+    return wlan
+
+def _scan(wlan):
+    """Scan with retry, return sorted by RSSI."""
+    for attempt in range(3):
         try:
-            # Simple scan with error handling
             results = wlan.scan()
             if results:
-                break
-            else:
-                print(f"No networks found on attempt {attempt + 1}")
-                if attempt < MAX_RETRIES - 1:
-                    time.sleep(1)
-                
-        except Exception as e:
-            print(f"Scan error on attempt {attempt + 1}: {e}")
-            if attempt < MAX_RETRIES - 1:
-                time.sleep(1)
-                # Try to reset WiFi interface
-                try:
-                    wlan.active(False)
-                    time.sleep(0.5)
-                    wlan.active(True)
-                    time.sleep(0.5)
-                except:
-                    pass
-            continue
-    
-    if not results:
-        print("No networks found.")
-        return []
-    
-    print(f"\n=== Wi-Fi Networks Found: {len(results)} ===")
-    print("Sorted by signal strength (strongest first)\n")
-    
-    # Sort by RSSI (signal strength) - strongest first
-    sorted_networks = sorted(results, key=lambda x: x[3], reverse=True)
-    
-    for i, net in enumerate(sorted_networks, 1):
-        ssid = net[0].decode() if isinstance(net[0], bytes) else net[0]
-        bssid = net[1]  # MAC address bytes
-        channel = net[2]
-        rssi = net[3]
-        auth = net[4]
-        
-        # Format MAC address
-        mac = ':'.join('%02X' % b for b in bssid)
-        
-        # Security type mapping
-        security = {
-            0: "Open", 
-            1: "WEP", 
-            2: "WPA-PSK", 
-            3: "WPA2-PSK", 
-            4: "WPA/WPA2-PSK"
-        }.get(auth, "Unknown")
-        
-        # Signal strength indicator
-        if rssi >= -50:
-            signal_quality = "Excellent"
-        elif rssi >= -60:
-            signal_quality = "Good"
-        elif rssi >= -70:
-            signal_quality = "Fair"
-        else:
-            signal_quality = "Poor"
-        
-        # Security indicator
-        security_status = "Secured" if auth != 0 else "Open"
-        
-        if compact:
-            # Compact format for connection selection
-            ssid_short = ssid[:15] + ".." if len(ssid) > 17 else ssid
-            print(f"{i:2}. {ssid_short:<17} {rssi:>4}dBm Ch{channel:<2} {security_status[:3]}")
-        else:
-            # Detailed format for network scanning
-            print(f"{i:2}. {ssid:<20} | {rssi:>4} dBm | Ch:{channel:<2} | {security_status} | {signal_quality}")
-            print(f"    MAC: {mac} | Security: {security}")
-        
-        # Log to file
-        log_to_file(f"WIFI: {ssid} | RSSI: {rssi} | Ch: {channel} | {security} | MAC: {mac}")
-    
-    print(f"\n{'-' * 60}")
-    return sorted_networks
+                return sorted(results, key=lambda x: x[3], reverse=True)
+        except OSError:
+            wlan.active(False)
+            utime.sleep_ms(500)
+            wlan.active(True)
+            utime.sleep_ms(500)
+    return []
 
-def show_network_details(network):
-    """Show detailed information about a specific network"""
-    ssid = network[0].decode() if isinstance(network[0], bytes) else network[0]
-    bssid = network[1]
-    channel = network[2]
-    rssi = network[3]
-    auth = network[4]
-    
-    mac = ':'.join('%02X' % b for b in bssid)
-    security = {0: "Open", 1: "WEP", 2: "WPA-PSK", 3: "WPA2-PSK", 4: "WPA/WPA2-PSK"}.get(auth, "Unknown")
-    
-    print(f"\nNetwork Details:")
-    print(f"SSID:     {ssid}")
-    print(f"MAC:      {mac}")
-    print(f"Channel:  {channel}")
-    print(f"RSSI:     {rssi} dBm")
-    print(f"Security: {security}")
-    
-    # Signal quality assessment
-    if rssi >= -50:
-        quality = "Excellent"
-    elif rssi >= -60:
-        quality = "Good"
-    elif rssi >= -70:
-        quality = "Fair"
-    else:
-        quality = "Poor"
-    
-    print(f"Quality:  {quality}")
-
-def connect_to_network(wlan, networks):
-    """Enhanced network connection without recursion"""
-    while True:
-        if not networks:
-            print("No networks available.")
-            return False
-        
-        print(f"\nSelect a network to connect:")
-        print("0. Rescan networks")
-        print("00. Cancel")
-        
-        choice = get_input("\nEnter number (or add 'd' for details): ")
-        
-        if choice == "0":
-            # Rescan networks without recursion
-            networks = scan_wifi_detailed(compact=True)
-            continue
-        elif choice == "00":
-            print("Cancelled.")
-            return False
-        elif choice.endswith('d'):
-            # Show details for selected network
-            try:
-                idx = int(choice[:-1]) - 1
-                if idx < 0 or idx >= len(networks):
-                    print("Invalid selection.")
-                    continue
-                show_network_details(networks[idx])
-                continue
-            except ValueError:
-                print("Invalid input.")
-                continue
-        elif not choice.isdigit():
-            print("Invalid input.")
-            continue
-
-        try:
-            idx = int(choice) - 1
-            if idx < 0 or idx >= len(networks):
-                print("Invalid selection.")
-                continue
-        except ValueError:
-            print("Invalid input.")
-            continue
-
-        selected = networks[idx]
-        
-        # Show basic network info before connecting
-        ssid = selected[0].decode() if isinstance(selected[0], bytes) else selected[0]
-        rssi = selected[3]
-        channel = selected[2]
-        print(f"\nConnecting to: {ssid}")
-        print(f"Signal: {rssi}dBm Channel: {channel}")
-        
-        auth = selected[4]
-
-        # Get password if needed
-        password = ""
-        if auth != 0:
-            print(f"Network requires authentication.")
-            password = read_password(f"Enter password: ")
-
-        print(f"Connecting...")
-        
-        # Connect with timeout handling
-        try:
-            success = connect(ssid, password)
-            
-            if success:
-                ip = wlan.ifconfig()[0]
-                print(f"Connected to {ssid}")
-                print(f"IP Address: {ip}")
-                
-                # Log successful connection
-                log_to_file(f"CONNECTED: {ssid} | IP: {ip}")
-                return True
-            else:
-                print(f"Failed to connect to {ssid}")
-                log_to_file(f"FAILED: {ssid}")
-                return False
-                
-        except Exception as e:
-            print(f"Connection error: {e}")
-            log_to_file(f"ERROR: {ssid} - {e}")
-            return False
-
-def show_current_connection(wlan):
-    """Show detailed current connection info"""
+def _connect(wlan, ssid, password):
+    """Connect with timeout. Returns True on success."""
     if wlan.isconnected():
-        essid = wlan.config('essid')
-        ip, subnet, gateway, dns = wlan.ifconfig()
-        
-        print(f"Currently connected to: {essid}")
-        print(f"IP Address: {ip}")
-        print(f"Gateway: {gateway}")
-        print(f"DNS: {dns}")
-        
-        # Try to get signal strength (if available)
-        try:
-            rssi = wlan.status('rssi')
-            print(f"Signal: {rssi} dBm")
-        except:
-            pass
-    else:
-        print("Not connected to any network")
+        wlan.disconnect()
+        utime.sleep_ms(500)
+    wlan.connect(ssid, password)
+    for _ in range(20):
+        if wlan.isconnected():
+            return True
+        utime.sleep_ms(500)
+    return False
 
-def monitor_signal(wlan, duration=30):
-    """Real-time signal strength monitoring"""
-    if not wlan.isconnected():
-        print("Not connected to any network")
-        return
-    
-    print(f"Monitoring signal for {duration} seconds...")
-    print("Press Ctrl+C to stop early")
-    print("-" * 40)
-    
-    start_time = time.time()
-    min_rssi = None
-    max_rssi = None
-    readings = []
-    
-    try:
-        while time.time() - start_time < duration:
+
+# ── Shared UI components ──────────────────────────────────────────
+
+class _UI:
+    """Shared drawing methods for all screens."""
+
+    def __init__(self):
+        self.key_buf = bytearray(10)
+
+    def header(self, title, wlan):
+        _at(1, 1)
+        _style(fg=_WHT, bg=_BLU, bold=True)
+        _w(' ' * _W)
+        _at(1, 2)
+        _w(title)
+        # Connection status right-aligned
+        if wlan.isconnected():
+            ip = wlan.ifconfig()[0]
             try:
-                rssi = wlan.status('rssi')
-                if rssi is not None:
-                    readings.append(rssi)
-                    
-                    # Track min/max
-                    if min_rssi is None or rssi < min_rssi:
-                        min_rssi = rssi
-                    if max_rssi is None or rssi > max_rssi:
-                        max_rssi = rssi
-                    
-                    # Signal quality indicator
-                    if rssi >= -50:
-                        quality = "Excellent"
-                        bars = "****"
-                    elif rssi >= -60:
-                        quality = "Good"
-                        bars = "*** "
-                    elif rssi >= -70:
-                        quality = "Fair"
-                        bars = "**  "
-                    else:
-                        quality = "Poor"
-                        bars = "*   "
-                    
-                    elapsed = int(time.time() - start_time)
-                    print(f"\r{elapsed:2}s: {rssi:>4}dBm {bars} {quality}  ", end="")
-                    
-                    time.sleep(1)
-                else:
-                    print("\rSignal data unavailable", end="")
-                    time.sleep(1)
-                    
-            except Exception as e:
-                print(f"\rError reading signal: {e}", end="")
-                time.sleep(1)
-                
-    except KeyboardInterrupt:
-        print("\n\nMonitoring stopped by user")
-    
-    # Show statistics
-    if readings:
-        avg_rssi = sum(readings) / len(readings)
-        print(f"\n\nSignal Statistics:")
-        print(f"Average: {avg_rssi:.1f} dBm")
-        print(f"Minimum: {min_rssi} dBm")
-        print(f"Maximum: {max_rssi} dBm")
-        print(f"Readings: {len(readings)}")
-        
-        # Log statistics
-        log_to_file(f"SIGNAL_MONITOR: Avg:{avg_rssi:.1f} Min:{min_rssi} Max:{max_rssi} Readings:{len(readings)}")
-    else:
-        print("\nNo signal readings obtained")
-
-def analyze_channels():
-    """Analyze WiFi channel usage and congestion"""
-    print("\nAnalyzing channel usage...")
-    
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
-    
-    try:
-        networks = wlan.scan()
-    except Exception as e:
-        print(f"Scan failed: {e}")
-        return
-    
-    if not networks:
-        print("No networks found")
-        return
-    
-    # Analyze by channel
-    channel_data = {}
-    
-    for net in networks:
-        ssid = net[0].decode() if isinstance(net[0], bytes) else net[0]
-        channel = net[2]
-        rssi = net[3]
-        auth = net[4]
-        
-        if channel not in channel_data:
-            channel_data[channel] = {
-                'count': 0,
-                'networks': [],
-                'avg_rssi': 0,
-                'strongest': rssi,
-                'weakest': rssi
-            }
-        
-        ch_data = channel_data[channel]
-        ch_data['count'] += 1
-        ch_data['networks'].append({'ssid': ssid, 'rssi': rssi, 'secure': auth != 0})
-        
-        # Update signal stats
-        if rssi > ch_data['strongest']:
-            ch_data['strongest'] = rssi
-        if rssi < ch_data['weakest']:
-            ch_data['weakest'] = rssi
-    
-    # Calculate averages
-    for ch in channel_data:
-        total_rssi = sum(net['rssi'] for net in channel_data[ch]['networks'])
-        channel_data[ch]['avg_rssi'] = total_rssi / channel_data[ch]['count']
-    
-    # Display results
-    print(f"\n=== Channel Analysis ({len(networks)} networks) ===")
-    print("Ch  Networks  Congestion  Avg Signal  Best Choice")
-    print("-" * 50)
-    
-    # Sort channels by number
-    for ch in sorted(channel_data.keys()):
-        data = channel_data[ch]
-        count = data['count']
-        avg_rssi = data['avg_rssi']
-        
-        # Congestion indicator (more networks = more congestion)
-        if count <= 2:
-            congestion = "Low"
-            cong_bars = "*   "
-        elif count <= 5:
-            congestion = "Med"
-            cong_bars = "**  "
-        elif count <= 8:
-            congestion = "High"
-            cong_bars = "*** "
-        else:
-            congestion = "Full"
-            cong_bars = "****"
-        
-        # Recommendation
-        if count <= 3 and avg_rssi >= -70:
-            recommendation = "Good"
-        elif count <= 5 and avg_rssi >= -75:
-            recommendation = "OK"
-        else:
-            recommendation = "Avoid"
-        
-        print(f"{ch:2}  {count:8}  {cong_bars} {congestion}  {avg_rssi:>7.1f}dBm  {recommendation}")
-    
-    # Show best channels
-    print(f"\n=== Recommendations ===")
-    
-    # Find least congested channels
-    sorted_channels = sorted(channel_data.items(), key=lambda x: (x[1]['count'], -x[1]['avg_rssi']))
-    
-    print("Best channels for new connections:")
-    for i, (ch, data) in enumerate(sorted_channels[:3]):
-        if i == 0:
-            status = "Best"
-        elif i == 1:
-            status = "Good"
-        else:
-            status = "OK"
-        print(f"  {status}: Channel {ch} ({data['count']} networks, {data['avg_rssi']:.1f}dBm avg)")
-    
-    # Show detailed view for most congested
-    if channel_data:
-        most_congested_ch = max(channel_data.keys(), key=lambda x: channel_data[x]['count'])
-        if channel_data[most_congested_ch]['count'] > 5:
-            print(f"\nMost congested: Channel {most_congested_ch} ({channel_data[most_congested_ch]['count']} networks)")
-    
-    # Log analysis
-    log_to_file(f"CHANNEL_ANALYSIS: {len(networks)} networks across {len(channel_data)} channels")
-    
-    return channel_data
-
-def analyze_networks():
-    """Comprehensive network analysis with security and vendor info"""
-    print("\nPerforming network analysis...")
-    
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
-    
-    try:
-        networks = wlan.scan()
-    except Exception as e:
-        print(f"Scan failed: {e}")
-        return
-    
-    if not networks:
-        print("No networks found")
-        return
-    
-    # Analyze networks
-    network_analysis = {
-        'total': len(networks),
-        'open': 0,
-        'secured': 0,
-        'hidden': 0,
-        'by_security': {},
-        'by_vendor': {},
-        'signal_distribution': {
-            'excellent': 0,  # >= -50
-            'good': 0,       # >= -60
-            'fair': 0,       # >= -70
-            'poor': 0        # < -70
-        },
-        'duplicate_ssids': {},
-        'strongest_network': None,
-        'weakest_network': None
-    }
-    
-    # Common OUI (MAC prefix) to vendor mapping
-    oui_vendors = {
-        '00:0C:6B': 'Cisco',
-        '10:0C:6B': 'Cisco',
-        '16:0C:6B': 'Cisco',
-        '1A:0C:6B': 'Cisco',
-        'AC:E2:D3': 'HP',
-        'F4:C1:14': 'Technicolor',
-        'F8:79:0A': 'Arris',
-        '7C:7E:F9': 'Eero',
-        '00:1B:11': 'D-Link',
-        '00:1F:33': 'Netgear',
-        '00:24:B2': 'Netgear',
-        '30:B5:C2': 'TP-Link',
-        '00:14:BF': 'Linksys',
-        '00:1A:70': 'Linksys',
-        '00:90:4C': 'Epigram',
-        'DC:A6:32': 'Raspberry Pi',
-        'B8:27:EB': 'Raspberry Pi',
-        'E4:5F:01': 'Raspberry Pi'
-    }
-    
-    for net in networks:
-        ssid = net[0].decode() if isinstance(net[0], bytes) else net[0]
-        bssid = net[1]
-        channel = net[2]
-        rssi = net[3]
-        auth = net[4]
-        
-        # Security analysis
-        if auth == 0:
-            network_analysis['open'] += 1
-            sec_type = 'Open'
-        else:
-            network_analysis['secured'] += 1
-            security_types = {
-                1: 'WEP',
-                2: 'WPA-PSK',
-                3: 'WPA2-PSK',
-                4: 'WPA/WPA2-PSK',
-                5: 'WPA3'
-            }
-            sec_type = security_types.get(auth, 'Unknown')
-        
-        network_analysis['by_security'][sec_type] = network_analysis['by_security'].get(sec_type, 0) + 1
-        
-        # Hidden network detection
-        if not ssid:
-            network_analysis['hidden'] += 1
-            ssid = '[Hidden]'
-        
-        # Duplicate SSID detection
-        if ssid in network_analysis['duplicate_ssids']:
-            network_analysis['duplicate_ssids'][ssid] += 1
-        else:
-            network_analysis['duplicate_ssids'][ssid] = 1
-        
-        # Signal distribution
-        if rssi >= -50:
-            network_analysis['signal_distribution']['excellent'] += 1
-        elif rssi >= -60:
-            network_analysis['signal_distribution']['good'] += 1
-        elif rssi >= -70:
-            network_analysis['signal_distribution']['fair'] += 1
-        else:
-            network_analysis['signal_distribution']['poor'] += 1
-        
-        # Track strongest/weakest
-        if network_analysis['strongest_network'] is None or rssi > network_analysis['strongest_network']['rssi']:
-            network_analysis['strongest_network'] = {'ssid': ssid, 'rssi': rssi, 'channel': channel}
-        if network_analysis['weakest_network'] is None or rssi < network_analysis['weakest_network']['rssi']:
-            network_analysis['weakest_network'] = {'ssid': ssid, 'rssi': rssi, 'channel': channel}
-        
-        # Vendor analysis
-        mac_prefix = ':'.join('%02X' % b for b in bssid[:3])
-        vendor = 'Unknown'
-        for prefix, v_name in oui_vendors.items():
-            if mac_prefix.startswith(prefix[:8]):
-                vendor = v_name
-                break
-        
-        network_analysis['by_vendor'][vendor] = network_analysis['by_vendor'].get(vendor, 0) + 1
-    
-    # Display results
-    print(f"\n=== Network Analysis Summary ===")
-    print(f"Total networks found: {network_analysis['total']}")
-    print(f"Open networks: {network_analysis['open']} ({network_analysis['open']*100//network_analysis['total']}%)")
-    print(f"Secured networks: {network_analysis['secured']} ({network_analysis['secured']*100//network_analysis['total']}%)")
-    print(f"Hidden networks: {network_analysis['hidden']}")
-    
-    print(f"\n=== Security Distribution ===")
-    for sec_type, count in sorted(network_analysis['by_security'].items()):
-        percentage = count * 100 // network_analysis['total']
-        bars = '*' * (percentage // 10) if percentage > 0 else ''
-        print(f"{sec_type:<12}: {count:2} ({percentage:3}%) {bars}")
-    
-    print(f"\n=== Signal Quality ===")
-    sig_dist = network_analysis['signal_distribution']
-    for quality, label in [('excellent', 'Excellent'), ('good', 'Good'), ('fair', 'Fair'), ('poor', 'Poor')]:
-        count = sig_dist[quality]
-        percentage = count * 100 // network_analysis['total'] if network_analysis['total'] > 0 else 0
-        print(f"{label:<9}: {count:2} ({percentage:3}%)")
-    
-    print(f"\n=== Network Highlights ===")
-    if network_analysis['strongest_network']:
-        s = network_analysis['strongest_network']
-        print(f"Strongest: {s['ssid'][:20]} ({s['rssi']}dBm, Ch{s['channel']})")
-    if network_analysis['weakest_network']:
-        w = network_analysis['weakest_network']
-        print(f"Weakest: {w['ssid'][:20]} ({w['rssi']}dBm, Ch{w['channel']})")
-    
-    # Show duplicate SSIDs
-    duplicates = {k: v for k, v in network_analysis['duplicate_ssids'].items() if v > 1}
-    if duplicates:
-        print(f"\n=== Duplicate SSIDs ===")
-        for ssid, count in sorted(duplicates.items(), key=lambda x: x[1], reverse=True)[:5]:
-            print(f"{ssid[:25]:<25}: {count} APs")
-    
-    # Vendor distribution (only show if interesting)
-    if len(network_analysis['by_vendor']) > 1 or 'Unknown' not in network_analysis['by_vendor']:
-        print(f"\n=== Access Point Vendors ===")
-        for vendor, count in sorted(network_analysis['by_vendor'].items(), key=lambda x: x[1], reverse=True)[:5]:
-            print(f"{vendor:<15}: {count}")
-    
-    # Security warnings
-    if network_analysis['open'] > 0:
-        print(f"\n! Warning: {network_analysis['open']} open network(s) detected")
-    
-    wep_count = network_analysis['by_security'].get('WEP', 0)
-    if wep_count > 0:
-        print(f"! Warning: {wep_count} network(s) using weak WEP encryption")
-    
-    # Log analysis summary
-    log_to_file(f"NETWORK_ANALYSIS: {network_analysis['total']} networks, {network_analysis['open']} open, {network_analysis['secured']} secured")
-    
-    return network_analysis
-
-def main_menu():
-    """Enhanced main menu with error handling"""
-    try:
-        wlan = network.WLAN(network.STA_IF)
-        wlan.active(True)
-    except Exception as e:
-        print(f"WiFi initialization error: {e}")
-        return False
-    
-    print("=" * 50)
-    print("WiFi Manager")
-    print("=" * 50)
-    
-    show_current_connection(wlan)
-    
-    if wlan.isconnected():
-        print("\nOptions:")
-        print("1. Scan and connect to new network")
-        print("2. Monitor signal strength")
-        print("3. Analyze channels")
-        print("4. Network analysis")
-        print("5. BLE Scanner (ProxiScan)")
-        print("6. Disconnect current network")
-        print("7. Show connection details")
-        print("8. Exit")
-        
-        choice = input("\nEnter choice (1-8): ").strip()
-        
-        if choice == "1":
-            disconnect(wlan)
-            networks = scan_wifi_detailed(compact=True)
-            connect_to_network(wlan, networks)
-            
-        elif choice == "2":
-            print("\nSignal Monitoring")
-            duration = input("Duration in seconds (default 30): ").strip()
-            try:
-                duration = int(duration) if duration else 30
-                duration = min(duration, 300)  # Max 5 minutes
+                ssid = wlan.config('essid')
             except:
-                duration = 30
-            monitor_signal(wlan, duration)
-            input("\nPress Enter to continue...")
-            
-        elif choice == "3":
-            analyze_channels()
-            input("\nPress Enter to continue...")
-            
-        elif choice == "4":
-            analyze_networks()
-            input("\nPress Enter to continue...")
-            
-        elif choice == "5":
-            # Launch BLE scanner
-            try:
-                print("\nLaunching BLE Scanner...")
-                print("Freeing memory...")
-                # Clear some memory before launching
-                import gc
-                gc.collect()
-                
-                # Option 1: Try the compact version first
-                try:
-                    import ProxiScan_compact
-                    ProxiScan_compact.main()
-                except ImportError:
-                    # Option 2: If that fails, try to launch as subprocess
-                    print("Note: BLE Scanner requires restart")
-                    print("Please run 'ProxiScan_3.0' from main menu")
-                    input("\nPress Enter to continue...")
-            except ImportError:
-                print("BLE Scanner not available")
-                input("\nPress Enter to continue...")
-            except Exception as e:
-                print(f"BLE Scanner error: {e}")
-                input("\nPress Enter to continue...")
-            
-        elif choice == "6":
-            disconnect(wlan)
-            
-        elif choice == "7":
-            show_current_connection(wlan)
-            input("\nPress Enter to continue...")
-            
-        elif choice == "8":
-            print("Goodbye!")
-            return False
+                ssid = '?'
+            info = f'{ssid} {ip}'
         else:
-            print("Invalid choice")
-            
-        return True
-            
-    else:
-        print("\nOptions:")
-        print("1. Try saved network")
-        print("2. Scan and connect to network")
-        print("3. Analyze channels")
-        print("4. Network analysis")
-        print("5. BLE Scanner (ProxiScan)")
-        print("6. Exit")
-        
-        choice = input("\nEnter choice (1-6): ").strip()
-        
-        if choice == "1":
-            if not connect_to_saved_network(wlan):
-                print("\nAuto-connect failed. Scanning for networks...")
-                networks = scan_wifi_detailed(compact=True)
-                connect_to_network(wlan, networks)
-                
-        elif choice == "2":
-            networks = scan_wifi_detailed(compact=True)
-            connect_to_network(wlan, networks)
-            
-        elif choice == "3":
-            analyze_channels()
-            input("\nPress Enter to continue...")
-            
-        elif choice == "4":
-            analyze_networks()
-            input("\nPress Enter to continue...")
-            
-        elif choice == "5":
-            # Launch BLE scanner
+            info = 'Not connected'
+        _at(1, _W - len(info))
+        _style(fg=_CYN, bg=_BLU)
+        _w(info)
+        _rst()
+        _at(2, 1); _style(fg=_CYN); _box_h(_W); _rst()
+
+    def footer(self, *items):
+        """Draw footer with key hints. items = [(key, label), ...]"""
+        row = _H - 1
+        _at(row, 1); _style(fg=_BLU); _box_h(_W); _rst()
+        _at(row + 1, 2)
+        for key, label in items:
+            _style(fg=_GRN, bold=True); _w(key)
+            _rst(); _style(dim=True); _w(f' {label}  ')
+        _rst()
+
+    def check_key(self):
+        try:
+            count = picocalc.terminal.readinto(self.key_buf)
+        except OSError:
+            count = None
+        if not count:
+            return None
+        return bytes(self.key_buf[:count])
+
+    def drain_keys(self):
+        picocalc.terminal.dryBuffer()
+        for _ in range(10):
             try:
-                print("\nLaunching BLE Scanner...")
-                print("Freeing memory...")
-                # Clear some memory before launching
-                import gc
-                gc.collect()
-                
-                # Option 1: Try the compact version first
-                try:
-                    import ProxiScan_compact
-                    ProxiScan_compact.main()
-                except ImportError:
-                    # Option 2: If that fails, try to launch as subprocess
-                    print("Note: BLE Scanner requires restart")
-                    print("Please run 'ProxiScan_3.0' from main menu")
-                    input("\nPress Enter to continue...")
-            except ImportError:
-                print("BLE Scanner not available")
-                input("\nPress Enter to continue...")
-            except Exception as e:
-                print(f"BLE Scanner error: {e}")
-                input("\nPress Enter to continue...")
-            
-        elif choice == "6":
-            print("Goodbye!")
-            return False
+                if not picocalc.terminal.readinto(self.key_buf):
+                    break
+            except:
+                break
+
+    def status_line(self, row, msg, color=_CYN):
+        _at(row, 2); _cll()
+        _style(fg=color); _w(msg); _rst()
+
+    def wait_key(self, prompt='Press any key...'):
+        self.status_line(_H - 2, prompt, _dim_color=_WHT)
+        _at(_H - 2, 2); _style(dim=True); _w(prompt); _rst()
+        self.drain_keys()
+        while not self.check_key():
+            utime.sleep_ms(50)
+        self.drain_keys()
+
+    def prompt_text(self, row, label):
+        """Simple single-line text input. Returns string or None on ESC."""
+        _at(row, 2); _cll()
+        _style(fg=_CYN); _w(label); _rst()
+        _cursor(True)
+        result = []
+        col = 2 + len(label)
+        _at(row, col)
+        while True:
+            key = self.check_key()
+            if not key:
+                utime.sleep_ms(30)
+                continue
+            if key == b'\x1b\x1b':
+                _cursor(False)
+                return None
+            if key in (b'\r\n', b'\r', b'\n'):
+                _cursor(False)
+                return ''.join(result)
+            if key[0] == 0x7F or key[0] == 0x08:  # Backspace/Delete
+                if result:
+                    result.pop()
+                    col -= 1
+                    _at(row, col); _w(' '); _at(row, col)
+            elif len(key) == 1 and 32 <= key[0] < 127:
+                ch = chr(key[0])
+                result.append(ch)
+                _w(ch)
+                col += 1
+
+    def prompt_password(self, row, label):
+        """Password input showing asterisks."""
+        _at(row, 2); _cll()
+        _style(fg=_CYN); _w(label); _rst()
+        _cursor(True)
+        result = []
+        col = 2 + len(label)
+        _at(row, col)
+        while True:
+            key = self.check_key()
+            if not key:
+                utime.sleep_ms(30)
+                continue
+            if key == b'\x1b\x1b':
+                _cursor(False)
+                return None
+            if key in (b'\r\n', b'\r', b'\n'):
+                _cursor(False)
+                return ''.join(result)
+            if key[0] == 0x7F or key[0] == 0x08:
+                if result:
+                    result.pop()
+                    col -= 1
+                    _at(row, col); _w(' '); _at(row, col)
+            elif len(key) == 1 and 32 <= key[0] < 127:
+                result.append(chr(key[0]))
+                _w('*')
+                col += 1
+
+
+# ── Main Menu ─────────────────────────────────────────────────────
+
+_MENU_ITEMS = [
+    ('Scan & Connect', 'scan'),
+    ('Saved Network', 'saved'),
+    ('Signal Monitor', 'monitor'),
+    ('Channel Analysis', 'channels'),
+    ('Network Analysis', 'analyze'),
+    ('Disconnect', 'disconnect'),
+]
+
+class WiFiManager:
+    def __init__(self):
+        self.ui = _UI()
+        self.wlan = _get_wlan()
+        self.sel = 0
+
+    def draw_menu(self):
+        _clr()
+        _cursor(False)
+        self.ui.header('WiFi Manager', self.wlan)
+
+        # Connection detail
+        _at(3, 2)
+        if self.wlan.isconnected():
+            _style(fg=_GRN, bold=True); _w('Connected')
+            _rst()
+            try:
+                rssi = self.wlan.status('rssi')
+                bars, col = _signal_bars(rssi)
+                _w('  '); _style(fg=col); _w(f'{bars} {rssi}dBm')
+            except:
+                pass
         else:
-            print("Invalid choice")
-            
-        return True
+            _style(fg=_RED); _w('Disconnected')
+        _rst()
+
+        # Menu items
+        _at(5, 2)
+        _style(fg=_CYN, bold=True); _w('MENU'); _rst()
+
+        for i, (label, _) in enumerate(_MENU_ITEMS):
+            row = 7 + i
+            _at(row, 1)
+            if i == self.sel:
+                _style(fg=_BLK, bg=_GRN, bold=True)
+                _w(f' \x10 {label:<{_W - 4}}')
+            else:
+                _w(f'   ')
+                _style(fg=_WHT)
+                _w(label)
+            _rst()
+
+        self.ui.footer(
+            ('\x18\x19', 'Navigate'),
+            ('ENTER', 'Select'),
+            ('ESC', 'Exit'),
+        )
+
+    def run(self):
+        self.draw_menu()
+        while True:
+            key = self.ui.check_key()
+            if not key:
+                utime.sleep_ms(50)
+                continue
+
+            redraw = False
+
+            if key == b'\x1b\x1b' or (len(key) == 1 and key[0] == 0x1b):
+                _cursor(True); _clr(); _rst()
+                return
+
+            elif key == b'\x1b[A':  # Up
+                if self.sel > 0:
+                    self.sel -= 1; redraw = True
+
+            elif key == b'\x1b[B':  # Down
+                if self.sel < len(_MENU_ITEMS) - 1:
+                    self.sel += 1; redraw = True
+
+            elif key in (b'\r\n', b'\r', b'\n'):
+                action = _MENU_ITEMS[self.sel][1]
+                if action == 'scan':
+                    ScanScreen(self.ui, self.wlan).run()
+                elif action == 'saved':
+                    self._connect_saved()
+                elif action == 'monitor':
+                    SignalMonitor(self.ui, self.wlan).run()
+                elif action == 'channels':
+                    ChannelAnalysis(self.ui, self.wlan).run()
+                elif action == 'analyze':
+                    NetworkAnalysis(self.ui, self.wlan).run()
+                elif action == 'disconnect':
+                    self._disconnect()
+                redraw = True
+
+            if redraw:
+                self.draw_menu()
+
+    def _connect_saved(self):
+        _clr()
+        self.ui.header('Saved Network', self.wlan)
+        ssid, pwd = _load_creds()
+        if not ssid:
+            self.ui.status_line(4, 'No saved credentials found.', _YEL)
+            self.ui.wait_key()
+            return
+
+        self.ui.status_line(4, f'Connecting to: {ssid}...', _CYN)
+        if _connect(self.wlan, ssid, pwd):
+            self.ui.status_line(5, f'Connected! IP: {self.wlan.ifconfig()[0]}', _GRN)
+        else:
+            self.ui.status_line(5, 'Connection failed.', _RED)
+        self.ui.wait_key()
+
+    def _disconnect(self):
+        if self.wlan.isconnected():
+            self.wlan.disconnect()
+
+
+# ── Scan & Connect Screen ────────────────────────────────────────
+
+class ScanScreen:
+    MAX_VIS = 26
+
+    def __init__(self, ui, wlan):
+        self.ui = ui
+        self.wlan = wlan
+        self.networks = []
+        self.sel = 0
+        self.scroll = 0
+
+    def _do_scan(self):
+        _clr()
+        self.ui.header('WiFi Scan', self.wlan)
+        self.ui.status_line(4, 'Scanning...', _CYN)
+        gc.collect()
+        self.networks = _scan(self.wlan)
+        self.sel = 0
+        self.scroll = 0
+
+    def draw(self):
+        _clr()
+        _cursor(False)
+        self.ui.header('WiFi Scan', self.wlan)
+        n = len(self.networks)
+
+        _at(3, 2)
+        _style(fg=_CYN, bold=True); _w('NETWORKS')
+        _rst(); _style(dim=True); _w(f'  ({n})'); _rst()
+
+        if n == 0:
+            _at(5, 4); _style(dim=True); _w('No networks found'); _rst()
+        else:
+            # Keep selection visible
+            if self.sel < self.scroll:
+                self.scroll = self.sel
+            elif self.sel >= self.scroll + self.MAX_VIS:
+                self.scroll = self.sel - self.MAX_VIS + 1
+
+            vis = min(self.MAX_VIS, n - self.scroll)
+            for i in range(vis):
+                idx = self.scroll + i
+                net = self.networks[idx]
+                ssid = net[0].decode() if isinstance(net[0], bytes) else net[0]
+                rssi = net[3]
+                auth = net[4]
+                ch = net[2]
+                bars, bar_col = _signal_bars(rssi)
+
+                row = 5 + i
+                _at(row, 1)
+
+                if not ssid:
+                    ssid = '[Hidden]'
+                ssid_disp = ssid[:22] if len(ssid) > 22 else ssid
+
+                if idx == self.sel:
+                    _style(fg=_BLK, bg=_GRN, bold=True)
+                    lock = ' ' if auth == 0 else '\x0ey\x0f'
+                    _w(f' {ssid_disp:<22} {rssi:>4}dBm Ch{ch:<2} {_sec_str(auth):<5}')
+                    _cll()
+                else:
+                    _w(' ')
+                    _style(fg=bar_col); _w(bars); _rst()
+                    _w(f' {ssid_disp:<22}')
+                    _style(dim=True); _w(f'{rssi:>4}dBm Ch{ch:<2}')
+                    if auth == 0:
+                        _style(fg=_YEL); _w(' Open')
+                    else:
+                        _style(dim=True); _w(f' {_sec_str(auth)}')
+                _rst()
+
+            # Scroll indicators
+            if self.scroll > 0:
+                _at(4, _W - 1); _style(fg=_YEL, bold=True); _w('^'); _rst()
+            if self.scroll + self.MAX_VIS < n:
+                _at(5 + vis, _W - 1); _style(fg=_YEL, bold=True); _w('v'); _rst()
+
+        self.ui.footer(
+            ('\x18\x19', 'Select'),
+            ('ENTER', 'Connect'),
+            ('R', 'Rescan'),
+            ('ESC', 'Back'),
+        )
+
+    def run(self):
+        self._do_scan()
+        self.draw()
+        while True:
+            key = self.ui.check_key()
+            if not key:
+                utime.sleep_ms(50)
+                continue
+
+            redraw = False
+            n = len(self.networks)
+
+            if key == b'\x1b\x1b' or (len(key) == 1 and key[0] == 0x1b):
+                return
+
+            elif key == b'\x1b[A' and self.sel > 0:
+                self.sel -= 1; redraw = True
+
+            elif key == b'\x1b[B' and self.sel < n - 1:
+                self.sel += 1; redraw = True
+
+            elif key == b'\x1b[H':  # Home
+                self.sel = 0; self.scroll = 0; redraw = True
+
+            elif key == b'\x1b[F':  # End
+                self.sel = max(0, n - 1); redraw = True
+
+            elif len(key) == 1 and key[0] in (ord('r'), ord('R')):
+                self._do_scan(); redraw = True
+
+            elif key in (b'\r\n', b'\r', b'\n') and n > 0:
+                self._connect_selected()
+                redraw = True
+
+            if redraw:
+                self.draw()
+
+    def _connect_selected(self):
+        net = self.networks[self.sel]
+        ssid = net[0].decode() if isinstance(net[0], bytes) else net[0]
+        auth = net[4]
+        rssi = net[3]
+
+        _clr()
+        self.ui.header('Connect', self.wlan)
+
+        _at(4, 2); _style(fg=_WHT, bold=True); _w(f'Network: '); _rst(); _w(ssid)
+        bars, col = _signal_bars(rssi)
+        _at(5, 2); _style(fg=col); _w(f'Signal:  {bars} {rssi}dBm ({_signal_label(rssi)})'); _rst()
+        _at(6, 2); _style(dim=True); _w(f'Security: {_sec_str(auth)}  Channel: {net[2]}'); _rst()
+
+        password = ''
+        if auth != 0:
+            password = self.ui.prompt_password(8, 'Password: ')
+            if password is None:
+                return  # ESC pressed
+
+        _at(10, 2); _style(fg=_CYN); _w('Connecting'); _rst()
+        for i in range(3):
+            utime.sleep_ms(300)
+            _w('.')
+
+        if _connect(self.wlan, ssid, password):
+            _save_creds(ssid, password)
+            ip = self.wlan.ifconfig()[0]
+            _at(12, 2); _style(fg=_GRN, bold=True); _w(f'Connected!'); _rst()
+            _at(13, 2); _w(f'IP: {ip}')
+        else:
+            _at(12, 2); _style(fg=_RED, bold=True); _w('Connection failed'); _rst()
+
+        self.ui.wait_key()
+
+
+# ── Signal Monitor ────────────────────────────────────────────────
+
+class SignalMonitor:
+    GRAPH_W = 45
+    GRAPH_H = 20
+
+    def __init__(self, ui, wlan):
+        self.ui = ui
+        self.wlan = wlan
+        self.readings = []
+
+    def run(self):
+        if not self.wlan.isconnected():
+            _clr()
+            self.ui.header('Signal Monitor', self.wlan)
+            self.ui.status_line(4, 'Not connected. Connect first.', _YEL)
+            self.ui.wait_key()
+            return
+
+        _clr()
+        _cursor(False)
+        self.ui.header('Signal Monitor', self.wlan)
+
+        try:
+            ssid = self.wlan.config('essid')
+        except:
+            ssid = '?'
+        _at(3, 2); _style(fg=_WHT, bold=True); _w(f'Monitoring: {ssid}'); _rst()
+
+        # Draw graph frame
+        _at(4, 2); _style(dim=True); _w('dBm'); _rst()
+        for i in range(self.GRAPH_H):
+            row = 5 + i
+            val = -40 - i * 2
+            _at(row, 1)
+            if i % 5 == 0:
+                _style(dim=True); _w(f'{val:>4}'); _rst()
+            _at(row, 6); _style(dim=True); _w('.'); _rst()
+
+        self.ui.footer(('ESC', 'Stop'))
+
+        # Live loop
+        col = 7
+        try:
+            while True:
+                key = self.ui.check_key()
+                if key and (key == b'\x1b\x1b' or (len(key) == 1 and key[0] == 0x1b)):
+                    break
+
+                try:
+                    rssi = self.wlan.status('rssi')
+                except:
+                    rssi = -99
+
+                self.readings.append(rssi)
+                bars, bar_col = _signal_bars(rssi)
+
+                # Draw bar in graph area
+                bar_height = max(0, min(self.GRAPH_H, (rssi + 100) * self.GRAPH_H // 60))
+                for i in range(self.GRAPH_H):
+                    row = 5 + self.GRAPH_H - 1 - i
+                    _at(row, col)
+                    if i < bar_height:
+                        _style(fg=bar_col); _w('\x0ea\x0f'); _rst()
+                    else:
+                        _w(' ')
+
+                # Current reading at bottom
+                _at(5 + self.GRAPH_H + 1, 2); _cll()
+                _style(fg=bar_col, bold=True)
+                _w(f'  {rssi} dBm  {_signal_label(rssi)}  {bars}')
+                _rst()
+
+                col += 1
+                if col >= 6 + self.GRAPH_W:
+                    col = 7
+                    # Clear graph columns
+                    for i in range(self.GRAPH_H):
+                        _at(5 + i, 7)
+                        _w(' ' * self.GRAPH_W)
+
+                utime.sleep_ms(500)
+
+        except KeyboardInterrupt:
+            pass
+
+        # Show stats
+        if self.readings:
+            avg = sum(self.readings) // len(self.readings)
+            mn = min(self.readings)
+            mx = max(self.readings)
+            _clr()
+            self.ui.header('Signal Summary', self.wlan)
+            _at(4, 2); _style(fg=_WHT, bold=True); _w('Statistics'); _rst()
+            _at(6, 4); _w(f'Readings:  {len(self.readings)}')
+            _at(7, 4); _w(f'Average:   {avg} dBm')
+            _at(8, 4); _w(f'Best:      {mx} dBm')
+            _at(9, 4); _w(f'Worst:     {mn} dBm')
+            self.ui.wait_key()
+
+
+# ── Channel Analysis ──────────────────────────────────────────────
+
+class ChannelAnalysis:
+    def __init__(self, ui, wlan):
+        self.ui = ui
+        self.wlan = wlan
+
+    def run(self):
+        _clr()
+        _cursor(False)
+        self.ui.header('Channel Analysis', self.wlan)
+        self.ui.status_line(4, 'Scanning...', _CYN)
+        gc.collect()
+
+        networks = _scan(self.wlan)
+        if not networks:
+            self.ui.status_line(4, 'No networks found.', _YEL)
+            self.ui.wait_key()
+            return
+
+        # Gather channel data
+        ch_data = {}
+        for net in networks:
+            ch = net[2]
+            rssi = net[3]
+            if ch not in ch_data:
+                ch_data[ch] = {'count': 0, 'total_rssi': 0, 'best': rssi}
+            ch_data[ch]['count'] += 1
+            ch_data[ch]['total_rssi'] += rssi
+            if rssi > ch_data[ch]['best']:
+                ch_data[ch]['best'] = rssi
+
+        _clr()
+        self.ui.header('Channel Analysis', self.wlan)
+
+        _at(3, 2)
+        _style(fg=_CYN, bold=True); _w(f'CHANNELS')
+        _rst(); _style(dim=True); _w(f'  ({len(networks)} networks)'); _rst()
+
+        # Table header
+        _at(5, 2)
+        _style(fg=_WHT, bold=True)
+        _w(f'{"Ch":>3}  {"APs":>3}  {"Congestion":<12}  {"Avg dBm":>8}')
+        _rst()
+        _at(6, 2); _style(dim=True); _box_h(42); _rst()
+
+        row = 7
+        best_ch = None
+        best_score = -999
+
+        for ch in sorted(ch_data.keys()):
+            d = ch_data[ch]
+            avg = d['total_rssi'] // d['count']
+            count = d['count']
+
+            # Congestion level
+            if count <= 2:
+                cong = 'Low'; cong_col = _GRN
+                bar = '\x0eaa\x0f    '
+            elif count <= 5:
+                cong = 'Medium'; cong_col = _YEL
+                bar = '\x0eaaaa\x0f  '
+            elif count <= 8:
+                cong = 'High'; cong_col = _RED
+                bar = '\x0eaaaaaa\x0f'
+            else:
+                cong = 'Packed'; cong_col = _RED
+                bar = '\x0eaaaaaa\x0f'
+
+            # Score for recommendation (lower count = better, higher RSSI = better)
+            score = -count * 10 + avg
+            if score > best_score:
+                best_score = score
+                best_ch = ch
+
+            _at(row, 2)
+            _style(fg=_WHT, bold=True); _w(f'{ch:>3}'); _rst()
+            _w(f'  {count:>3}  ')
+            _style(fg=cong_col); _w(f'{bar} {cong:<6}'); _rst()
+            _w(f'  {avg:>4} dBm')
+
+            row += 1
+            if row > _H - 5:
+                break
+
+        # Recommendation
+        if best_ch is not None:
+            _at(row + 1, 2)
+            _style(fg=_GRN, bold=True); _w('Best channel: '); _rst()
+            _style(fg=_WHT, bold=True); _w(f'{best_ch}'); _rst()
+            _style(dim=True); _w(f' ({ch_data[best_ch]["count"]} APs, least congested)'); _rst()
+
+        self.ui.footer(('ESC', 'Back'))
+        while True:
+            key = self.ui.check_key()
+            if not key:
+                utime.sleep_ms(50)
+                continue
+            if key == b'\x1b\x1b' or (len(key) == 1 and key[0] == 0x1b):
+                return
+
+
+# ── Network Analysis ──────────────────────────────────────────────
+
+class NetworkAnalysis:
+    def __init__(self, ui, wlan):
+        self.ui = ui
+        self.wlan = wlan
+
+    def run(self):
+        _clr()
+        _cursor(False)
+        self.ui.header('Network Analysis', self.wlan)
+        self.ui.status_line(4, 'Scanning...', _CYN)
+        gc.collect()
+
+        networks = _scan(self.wlan)
+        if not networks:
+            self.ui.status_line(4, 'No networks found.', _YEL)
+            self.ui.wait_key()
+            return
+
+        # Analyze
+        total = len(networks)
+        n_open = sum(1 for n in networks if n[4] == 0)
+        n_hidden = sum(1 for n in networks if not n[0])
+        sig = {'excellent': 0, 'good': 0, 'fair': 0, 'weak': 0}
+        sec_counts = {}
+
+        strongest = networks[0]  # Already sorted
+        weakest = networks[-1]
+
+        for net in networks:
+            rssi = net[3]
+            auth = net[4]
+            sec = _sec_str(auth)
+            sec_counts[sec] = sec_counts.get(sec, 0) + 1
+            if rssi >= -50: sig['excellent'] += 1
+            elif rssi >= -60: sig['good'] += 1
+            elif rssi >= -70: sig['fair'] += 1
+            else: sig['weak'] += 1
+
+        _clr()
+        self.ui.header('Network Analysis', self.wlan)
+
+        # Summary
+        _at(3, 2); _style(fg=_CYN, bold=True); _w('SUMMARY'); _rst()
+        _at(4, 4); _w(f'Total networks:  '); _style(fg=_WHT, bold=True); _w(f'{total}'); _rst()
+        _at(5, 4); _w(f'Open networks:   ')
+        if n_open > 0:
+            _style(fg=_YEL, bold=True)
+        _w(f'{n_open}'); _rst()
+        _at(6, 4); _w(f'Hidden networks: {n_hidden}')
+
+        # Signal distribution
+        _at(8, 2); _style(fg=_CYN, bold=True); _w('SIGNAL QUALITY'); _rst()
+        labels = [('Excellent', sig['excellent'], _GRN),
+                  ('Good', sig['good'], _GRN),
+                  ('Fair', sig['fair'], _YEL),
+                  ('Weak', sig['weak'], _RED)]
+        for i, (label, count, col) in enumerate(labels):
+            _at(9 + i, 4)
+            _style(fg=col); _w(f'{label:<10}'); _rst()
+            pct = count * 100 // total if total else 0
+            bar_len = count * 20 // total if total else 0
+            _style(fg=col); _w('\x0e' + 'a' * bar_len + '\x0f'); _rst()
+            _w(f' {count} ({pct}%)')
+
+        # Security
+        _at(14, 2); _style(fg=_CYN, bold=True); _w('SECURITY'); _rst()
+        row = 15
+        for sec, count in sorted(sec_counts.items(), key=lambda x: -x[1]):
+            pct = count * 100 // total
+            _at(row, 4)
+            col = _YEL if sec == 'Open' or sec == 'WEP' else _GRN
+            _style(fg=col); _w(f'{sec:<8}'); _rst()
+            _w(f' {count:>2} ({pct}%)')
+            row += 1
+
+        # Highlights
+        row += 1
+        _at(row, 2); _style(fg=_CYN, bold=True); _w('HIGHLIGHTS'); _rst()
+        s_ssid = strongest[0].decode() if isinstance(strongest[0], bytes) else strongest[0]
+        w_ssid = weakest[0].decode() if isinstance(weakest[0], bytes) else weakest[0]
+        _at(row + 1, 4); _style(fg=_GRN); _w('Strongest: '); _rst()
+        _w(f'{s_ssid[:20]} ({strongest[3]}dBm)')
+        _at(row + 2, 4); _style(fg=_RED); _w('Weakest:   '); _rst()
+        _w(f'{w_ssid[:20]} ({weakest[3]}dBm)')
+
+        # Warnings
+        if n_open > 0:
+            _at(row + 4, 2)
+            _style(fg=_YEL, bold=True); _w(f'! {n_open} open network(s) detected'); _rst()
+
+        self.ui.footer(('ESC', 'Back'))
+        while True:
+            key = self.ui.check_key()
+            if not key:
+                utime.sleep_ms(50)
+                continue
+            if key == b'\x1b\x1b' or (len(key) == 1 and key[0] == 0x1b):
+                return
+
+
+# ── Entry point ───────────────────────────────────────────────────
 
 def main():
-    """Main function with safe loop and exit handling"""
-    max_iterations = 100  # Prevent infinite loops
-    iteration = 0
-    
+    gc.collect()
     try:
-        while iteration < max_iterations:
-            iteration += 1
-            
-            try:
-                if not main_menu():
-                    break
-                
-            except Exception as e:
-                print(f"\nMenu error: {e}")
-                # Give option to exit on error
-                if input("Exit? (y/N): ").strip().lower() == 'y':
-                    break
-                    
-    except KeyboardInterrupt:
-        print("\n\nWiFi Manager stopped by user")
+        app = WiFiManager()
+        app.run()
     except Exception as e:
-        print(f"\nCritical error: {e}")
-    finally:
-        print("WiFi Manager exited.")
+        _cursor(True); _rst(); _clr()
+        print(f'WiFiManager error: {e}')
+        import sys
+        sys.print_exception(e)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

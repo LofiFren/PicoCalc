@@ -30,9 +30,9 @@ AUDIO_RIGHT = 27  # PWM_R
 # Game constants
 BOARD_WIDTH = 10
 BOARD_HEIGHT = 20
-BLOCK_SIZE = 12  # Increased from 8 to 12 pixels
-BOARD_X = 20     # Moved left from 50 to 20
-BOARD_Y = 30     # Moved down slightly from 20 to 30
+BLOCK_SIZE = 14
+BOARD_X = 10
+BOARD_Y = 22
 
 # Color definitions (4-bit grayscale for PicoCalc display)
 COLOR_BLACK = 0
@@ -206,7 +206,7 @@ class TetrisGame:
     def __init__(self):
         self.display = picocalc.display
         self.width, self.height = self.display.width, self.display.height
-        
+
         # Initialize sound system
         self.sound = TetrisSound()
         
@@ -479,101 +479,116 @@ class TetrisGame:
         """Draw the next piece preview"""
         if not self.next_piece:
             return
-        
-        # Next piece area - positioned to the right of the larger board
-        next_x = BOARD_X + BOARD_WIDTH * BLOCK_SIZE + 15  # Adjusted for larger board
-        next_y = BOARD_Y + 20
-        
-        self.display.text("NEXT:", next_x, next_y - 15, COLOR_TEXT)
-        self.display.rect(next_x - 2, next_y - 2, 4 * BLOCK_SIZE + 3, 4 * BLOCK_SIZE + 3, COLOR_BORDER)
-        
-        # Draw next piece
+
+        # Side panel starts right of the board
+        px0 = BOARD_X + BOARD_WIDTH * BLOCK_SIZE + 12
+        ny = BOARD_Y + 5
+
+        self.display.text("NEXT", px0 + 8, ny, COLOR_TEXT_DIM)
+        ny += 14
+        box_s = 4 * BLOCK_SIZE + 4
+        self.display.rect(px0, ny, box_s, box_s, COLOR_DARK_GRAY)
+
         for py in range(4):
-            for px in range(4):
-                if self.next_piece[py][px]:
-                    block_x = next_x + px * BLOCK_SIZE
-                    block_y = next_y + py * BLOCK_SIZE
+            for ppx in range(4):
+                if self.next_piece[py][ppx]:
+                    bx = px0 + 2 + ppx * BLOCK_SIZE
+                    by = ny + 2 + py * BLOCK_SIZE
                     color = PIECE_COLORS.get(self.next_type, COLOR_WHITE)
-                    self.draw_block(block_x, block_y, True, color)
-    
+                    self.draw_block(bx, by, True, color)
+
     def draw_stats(self):
-        """Draw game statistics"""
-        stats_x = BOARD_X + BOARD_WIDTH * BLOCK_SIZE + 15  # Adjusted for larger board
-        stats_y = BOARD_Y + 120  # Moved down to accommodate larger next piece
-        
-        self.display.text(f"SCORE:", stats_x, stats_y, COLOR_TEXT)
-        self.display.text(f"{self.score}", stats_x, stats_y + 12, COLOR_HIGHLIGHT)
-        
-        self.display.text(f"LINES:", stats_x, stats_y + 30, COLOR_TEXT)
-        self.display.text(f"{self.lines_cleared}", stats_x, stats_y + 42, COLOR_HIGHLIGHT)
-        
-        self.display.text(f"LEVEL:", stats_x, stats_y + 60, COLOR_TEXT)
-        self.display.text(f"{self.level}", stats_x, stats_y + 72, COLOR_HIGHLIGHT)
-    
+        """Draw game statistics in side panel"""
+        px0 = BOARD_X + BOARD_WIDTH * BLOCK_SIZE + 12
+        sy = BOARD_Y + 85
+
+        # Score section
+        self.display.fill_rect(px0, sy, 150, 14, COLOR_DARK_GRAY)
+        self.display.text("SCORE", px0 + 2, sy + 3, COLOR_TEXT_DIM)
+        self.display.text(f"{self.score}", px0 + 2, sy + 18, COLOR_WHITE)
+
+        # Lines section
+        sy += 38
+        self.display.fill_rect(px0, sy, 150, 14, COLOR_DARK_GRAY)
+        self.display.text("LINES", px0 + 2, sy + 3, COLOR_TEXT_DIM)
+        self.display.text(f"{self.lines_cleared}", px0 + 2, sy + 18, COLOR_HIGHLIGHT)
+
+        # Level section
+        sy += 38
+        self.display.fill_rect(px0, sy, 150, 14, COLOR_DARK_GRAY)
+        self.display.text("LEVEL", px0 + 2, sy + 3, COLOR_TEXT_DIM)
+        self.display.text(f"{self.level}", px0 + 2, sy + 18, COLOR_HIGHLIGHT)
+
+        # Level progress bar
+        sy += 32
+        prog = min(10, self.lines_cleared % 10)
+        self.display.rect(px0, sy, 102, 8, COLOR_DARK_GRAY)
+        if prog > 0:
+            self.display.fill_rect(px0 + 1, sy + 1, prog * 10, 6, COLOR_LIGHT_GRAY)
+
     def draw_controls(self):
-        """Draw control instructions"""
-        controls_y = self.height - 40  # Moved up from bottom to avoid overlap
-        
-        # Compact controls display for bottom of screen
-        self.display.text("↑:Rot ←→:Move ↓:Drop", 10, controls_y, COLOR_TEXT_DIM)
-        self.display.text("SPACE:Hard P:Pause", 10, controls_y + 12, COLOR_TEXT_DIM)
-        self.display.text("S:Sound ESC:Exit", 10, controls_y + 24, COLOR_TEXT_DIM)
+        """Draw compact controls bar at bottom"""
+        cy = self.height - 16
+        self.display.fill_rect(0, cy - 2, self.width, 18, COLOR_DARK_GRAY)
+        self.display.hline(0, cy - 2, self.width, COLOR_GRAY)
+        snd = "" if self.sound.sound_enabled else " [MUTE]"
+        self.display.text(f"\x18Rot \x1b\x1aMove \x19Drop SPC:Hard P S ESC{snd}", 4, cy + 2, COLOR_TEXT_DIM)
     
     def draw_game_over(self):
-        """Draw game over screen"""
-        # Game over box
-        box_x = self.width // 2 - 60
-        box_y = self.height // 2 - 40
-        box_w = 120
-        box_h = 80
-        
-        self.display.fill_rect(box_x, box_y, box_w, box_h, COLOR_BLACK)
-        self.display.rect(box_x, box_y, box_w, box_h, COLOR_HIGHLIGHT)
-        self.display.rect(box_x + 1, box_y + 1, box_w - 2, box_h - 2, COLOR_BORDER)
-        
-        # Game over text
-        self.display.text("GAME OVER", box_x + 15, box_y + 15, COLOR_HIGHLIGHT)
-        self.display.text(f"Score: {self.score}", box_x + 20, box_y + 35, COLOR_TEXT)
-        self.display.text(f"Lines: {self.lines_cleared}", box_x + 20, box_y + 47, COLOR_TEXT)
-        self.display.text("R: Restart", box_x + 20, box_y + 59, COLOR_HIGHLIGHT)
-    
+        """Draw game over overlay"""
+        cx, cy = self.width // 2, self.height // 2
+        bw, bh = 150, 90
+        bx, by = cx - bw // 2, cy - bh // 2
+
+        self.display.fill_rect(bx, by, bw, bh, COLOR_BLACK)
+        self.display.rect(bx, by, bw, bh, COLOR_WHITE)
+        self.display.rect(bx + 2, by + 2, bw - 4, bh - 4, COLOR_GRAY)
+
+        self.display.text("GAME  OVER", bx + 30, by + 12, COLOR_WHITE)
+        self.display.hline(bx + 10, by + 24, bw - 20, COLOR_DARK_GRAY)
+        self.display.text(f"Score: {self.score}", bx + 15, by + 32, COLOR_LIGHT_GRAY)
+        self.display.text(f"Lines: {self.lines_cleared}", bx + 15, by + 46, COLOR_LIGHT_GRAY)
+        self.display.text(f"Level: {self.level}", bx + 15, by + 60, COLOR_LIGHT_GRAY)
+        self.display.text("R:Restart  ESC:Quit", bx + 10, by + 76, COLOR_WHITE)
+
     def draw_pause(self):
-        """Draw pause screen"""
-        pause_x = self.width // 2 - 30
-        pause_y = self.height // 2 - 10
-        
-        self.display.fill_rect(pause_x - 5, pause_y - 5, 70, 30, COLOR_BLACK)
-        self.display.rect(pause_x - 5, pause_y - 5, 70, 30, COLOR_BORDER)
-        self.display.text("PAUSED", pause_x, pause_y, COLOR_HIGHLIGHT)
-        self.display.text("P: Resume", pause_x - 3, pause_y + 12, COLOR_TEXT)
-    
+        """Draw pause overlay"""
+        cx, cy = self.width // 2, self.height // 2
+        bw, bh = 120, 40
+        bx, by = cx - bw // 2, cy - bh // 2
+
+        self.display.fill_rect(bx, by, bw, bh, COLOR_BLACK)
+        self.display.rect(bx, by, bw, bh, COLOR_LIGHT_GRAY)
+        self.display.text("PAUSED", bx + 33, by + 8, COLOR_WHITE)
+        self.display.text("P to resume", bx + 24, by + 24, COLOR_TEXT_DIM)
+
+    def draw_header(self):
+        """Draw styled header bar"""
+        self.display.fill_rect(0, 0, self.width, 18, COLOR_DARK_GRAY)
+        self.display.text("TETRIS", 4, 5, COLOR_WHITE)
+        self.display.hline(0, 18, self.width, COLOR_GRAY)
+
     def draw(self):
         """Draw the entire game"""
+        self.display.beginDraw()
         self.display.fill(0)
-        
-        # Title - centered at top
-        title_text = "TETRIS"
-        if not self.sound.sound_enabled:
-            title_text += " [MUTE]"
-        self.display.text(title_text, 10, 10, COLOR_TITLE)
-        
-        # Game elements
+
+        self.draw_header()
         self.draw_board()
-        
+
         if not self.game_over:
             self.draw_ghost_piece()
             self.draw_current_piece()
-        
+
         self.draw_next_piece()
         self.draw_stats()
         self.draw_controls()
-        
-        # Overlays
+
         if self.game_over:
             self.draw_game_over()
         elif self.paused:
             self.draw_pause()
-        
+
         self.display.show()
     
     def handle_input(self):
@@ -588,7 +603,7 @@ class TetrisGame:
         key_data = bytes(self.key_buffer[:count])
         
         # ESC key - exit game
-        if key_data == KEY_ESC:
+        if key_data == KEY_ESC or (count == 1 and self.key_buffer[0] == 0x1b):
             return "EXIT"
         
         # Game over state
@@ -599,9 +614,7 @@ class TetrisGame:
         
         # Sound toggle (works in any state)
         if count == 1 and (self.key_buffer[0] == ord('s') or self.key_buffer[0] == ord('S')):
-            enabled = self.sound.toggle_sound()
-            print(f"Sound {'enabled' if enabled else 'disabled'}")
-            self.update_display()
+            self.sound.toggle_sound()
             return True
         
         # Pause state

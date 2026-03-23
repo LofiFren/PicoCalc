@@ -45,6 +45,7 @@ static uint st_dma;
 static uint8_t *frameBuff;
 
 static volatile bool autoUpdate;
+static volatile bool skipUpdate;  // When true, Core 1 skips framebuffer push
 static uint16_t lineBuffA[64];
 static uint16_t lineBuffB[64];
 void (*pColorUpdate)(uint8_t *, uint32_t, const uint16_t *);
@@ -121,16 +122,11 @@ void core1_main() {
   // without this, Core 0 programs flash while Core 1 executes XIP code,
   // causing a hard fault / reset on any filesystem write.
   multicore_lockout_victim_init();
-  //static int frame = 0;
   while (1) {
-    //if (++frame % 100 == 0) {
-    //  printf("Core1 alive: %d\n", frame);
-    //}
-    if (autoUpdate){
+    if (autoUpdate && !skipUpdate){
       pColorUpdate(frameBuff,DISPLAY_HEIGHT*DISPLAY_WIDTH, LUT);
-    }     
-    sleep_ms(5); 
-
+    }
+    sleep_ms(5);
   }
 }
 
@@ -172,6 +168,7 @@ static mp_obj_t pd_init(mp_obj_t fb_obj, mp_obj_t color_type, mp_obj_t autoR){
     mp_get_buffer_raise(fb_obj, &buf_info, MP_BUFFER_READ);
     frameBuff=(uint8_t *)buf_info.buf;
     autoUpdate = mp_obj_is_true(autoR);
+    skipUpdate = false;
 
     int32_t colorType = mp_obj_get_int(color_type);
     currentTextY = 8;
@@ -371,9 +368,26 @@ static void command(uint8_t com, size_t len, const char *data) {
 
 
 
+// Begin drawing: block Core 1 from pushing until show() is called.
+// Call before fill(0) to prevent flicker from partial framebuffer push.
+static mp_obj_t pd_beginDraw(){
+    skipUpdate = true;
+    // Wait for any in-progress DMA transfer to finish
+    while (dma_channel_is_busy(st_dma)){
+      tight_loop_contents();
+    }
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(pd_beginDraw_obj, pd_beginDraw);
+
+// Push framebuffer to display. In auto mode, unblocks Core 1 to push
+// the complete frame on its next cycle. In manual mode, pushes directly.
 static mp_obj_t pd_update(){
     if (autoUpdate==false){
       pColorUpdate(frameBuff,DISPLAY_HEIGHT*DISPLAY_WIDTH, LUT);
+    } else {
+      // Signal Core 1: frame is ready, resume pushing
+      skipUpdate = false;
     }
     return mp_const_true;
 }
@@ -757,6 +771,7 @@ static const mp_rom_map_elem_t picocalcdisplay_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_init), MP_ROM_PTR(&pd_init_obj) },
     { MP_ROM_QSTR(MP_QSTR_setLUT), MP_ROM_PTR(&setLUT_obj) },
     { MP_ROM_QSTR(MP_QSTR_update), MP_ROM_PTR(&pd_update_obj) },
+    { MP_ROM_QSTR(MP_QSTR_beginDraw), MP_ROM_PTR(&pd_beginDraw_obj) },
     { MP_ROM_QSTR(MP_QSTR_startAutoUpdate), MP_ROM_PTR(&startAutoUpdate_obj) },
     { MP_ROM_QSTR(MP_QSTR_stopAutoUpdate), MP_ROM_PTR(&stopAutoUpdate_obj) },
     { MP_ROM_QSTR(MP_QSTR_drawTxt6x8), MP_ROM_PTR(&drawTxt6x8_obj) },

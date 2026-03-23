@@ -1,3 +1,18 @@
+"""
+boot_thonny.py — Thonny-compatible boot for PicoCalc
+
+Deploy as /boot.py on the device when using Thonny as your IDE.
+Skips os.dupterm() which causes Thonny's "raw paste" protocol errors.
+
+Trade-offs vs standard boot.py:
+  - Thonny connects cleanly (no raw paste errors)
+  - PicoCalc screen still shows the splash and menu
+  - PicoCalc keyboard still works in apps and the menu
+  - REPL output (>>>, print, errors) will NOT appear on the PicoCalc screen
+  - REPL output only shows in Thonny's shell panel
+
+To switch back to standard boot: deploy boot.py as /boot.py
+"""
 import sys
 # Ensure /modules is in path before any picocalc imports
 for _p in ["/modules", "/sd/py_scripts"]:
@@ -16,15 +31,16 @@ _C_DK = 3
 _C_GR = 8
 _C_LT = 12
 _C_WHT = 15
+_C_WARN = 10
 
 def _splash_init(d):
-    """Draw initial splash screen."""
+    """Draw initial splash screen — Thonny variant."""
     d.fill(_C_BLK)
     # Header bar
     d.fill_rect(0, 0, 320, 22, _C_DK)
-    d.text("PICOCALC", 118, 7, _C_WHT)
+    d.text("PICOCALC", 100, 7, _C_WHT)
+    d.text("THN", 168, 7, _C_WARN)
     d.hline(0, 22, 320, _C_LT)
-    # Tagline
     d.text("Booting...", 126, 34, _C_GR)
     d.show()
 
@@ -32,7 +48,6 @@ def _splash_step(d, row, label, status, color=_C_LT):
     """Draw one boot progress line."""
     y = 60 + row * 18
     d.text(label, 40, y, _C_GR)
-    # Dot leader
     lx = 40 + len(label) * 6 + 4
     while lx < 210:
         d.fill_rect(lx, y + 4, 2, 2, _C_DK)
@@ -43,7 +58,7 @@ def _splash_step(d, row, label, status, color=_C_LT):
 # ── Boot sequence ────────────────────────────────────────────────
 
 try:
-    # 1. Display (first — gives us visual feedback)
+    # 1. Display
     pc_display = PicoDisplay(320, 320)
     _splash_init(pc_display)
     _splash_step(pc_display, 0, "Display", "OK", _C_WHT)
@@ -64,13 +79,12 @@ try:
     _splash_step(pc_display, 2, "SD Card", "...", _C_GR)
 
     import utime
-    utime.sleep_ms(500)  # Reduced from 900ms — cold-start stabilization
+    utime.sleep_ms(500)
 
     from enhanced_sd import initsd
     sd = initsd(debug=False)
 
     if sd:
-        # Quick capacity check (no file enumeration)
         try:
             st = os.statvfs('/sd')
             mb = (st[0] * st[3]) // (1024 * 1024)
@@ -105,28 +119,19 @@ try:
         return pye_edit(args, tab_size=tab_size, undo=undo, io_device=pc_terminal)
     picocalc.edit = edit
 
-    # 9. Connect terminal to REPL
-    # dupterm sends REPL output to the PicoCalc screen AND allows the
-    # PicoCalc keyboard to type at the >>> prompt.
-    # NOTE: Thonny may show "Unexpected read during raw paste" on first
-    # connect — press Stop/Restart in Thonny to resolve. This is a known
-    # Thonny limitation with dupterm devices; mpremote and the dashboard
-    # are unaffected.
-    os.dupterm(pc_terminal)
+    # 9. NO os.dupterm() — Thonny compatibility
+    # Skipping dupterm prevents keyboard/VT data from leaking into
+    # Thonny's raw paste protocol. REPL output only shows in Thonny,
+    # not on the PicoCalc screen. Apps and menu still work normally
+    # because they read picocalc.terminal directly.
+    _splash_step(pc_display, 4, "Mode", "Thonny", _C_WARN)
 
-    # 10. Done — show ready
+    # 10. Done
     _splash_step(pc_display, 5, "Ready!", "", _C_WHT)
     utime.sleep_ms(400)
 
     gc.collect()
-    usb_debug(f"Boot complete. Free: {gc.mem_free()} bytes")
-    # Menu launches from main.py (not here) so REPL is available over USB
-    # immediately after boot. Thonny/mpremote can interrupt main.py with
-    # Ctrl+C; boot.py cannot be interrupted the same way.
+    usb_debug(f"Boot complete (Thonny mode). Free: {gc.mem_free()} bytes")
 
 except Exception as e:
     sys.print_exception(e)
-    try:
-        os.dupterm(None).write(b"[boot.py error]\n")
-    except:
-        pass

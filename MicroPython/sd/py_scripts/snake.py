@@ -28,12 +28,12 @@ AUDIO_LEFT = 28
 AUDIO_RIGHT = 27
 
 # Game constants
-GRID_SIZE = 18  # Reduced from 20 to 18 for better fit
-CELL_SIZE = 14  # Reduced from 15 to 14 pixels per cell
-BOARD_X = 10
-BOARD_Y = 50  # Position board below score text
-INITIAL_SPEED = 200  # milliseconds between moves
-MIN_SPEED = 50  # fastest speed
+GRID_SIZE = 18
+CELL_SIZE = 15
+BOARD_X = 25   # Centered: (320 - 18*15) / 2 = 25
+BOARD_Y = 22   # Right below header bar
+INITIAL_SPEED = 200
+MIN_SPEED = 50
 
 # Color definitions
 COLOR_BLACK = 0
@@ -112,8 +112,9 @@ class SnakeSound:
 class SnakeGame:
     def __init__(self):
         self.display = picocalc.display
+        # Note: do NOT use stopRefresh() — it kills Core 1 and causes DMA issues
         self.width, self.height = self.display.width, self.display.height
-        
+
         # Clear entire screen first to remove any menu remnants
         self.display.fill(COLOR_BLACK)
         self.display.show()
@@ -259,86 +260,75 @@ class SnakeGame:
         """Draw food"""
         self.draw_cell(self.food[0], self.food[1], COLOR_FOOD)
     
-    def draw_stats(self):
-        """Draw score and stats"""
-        # Only redraw if needed
-        if self.needs_full_redraw or self.last_score != self.score:
-            # Clear stats area
-            self.display.fill_rect(0, 0, 320, 45, COLOR_BLACK)
-            
-            # Title
-            title_text = "SNAKE"
-            if not self.sound.sound_enabled:
-                title_text += " [MUTE]"
-            self.display.text(title_text, 10, 10, COLOR_TEXT)
-            
-            # Score on right side
-            self.display.text(f"Score: {self.score}", 200, 10, COLOR_TEXT)
-            self.display.text(f"High: {self.high_score}", 200, 22, COLOR_TEXT_DIM)
-            self.display.text(f"Speed: {self.speed_level}", 200, 34, COLOR_TEXT_DIM)
-            
-            self.last_score = self.score
-    
+    def draw_header(self):
+        """Draw styled header bar with score info"""
+        d = self.display
+        d.fill_rect(0, 0, 320, 18, COLOR_DARK_GRAY)
+        d.text("SNAKE", 4, 5, COLOR_WHITE)
+        snd = "" if self.sound.sound_enabled else " M"
+        d.text(f"Score:{self.score}", 120, 5, COLOR_WHITE)
+        d.text(f"Hi:{self.high_score}", 210, 5, COLOR_LIGHT_GRAY)
+        d.text(f"Spd:{self.speed_level}{snd}", 275, 5, COLOR_GRAY)
+        d.hline(0, 18, 320, COLOR_GRAY)
+        self.last_score = self.score
+
     def draw_controls(self):
-        """Draw control hints"""
-        if self.needs_full_redraw:
-            # Position controls at the top, below the title and score
-            controls_y = 22  # Position below title line
-            
-            self.display.text("Arrows: Move  P: Pause", 10, controls_y, COLOR_TEXT_DIM)
-            self.display.text("S: Sound  ESC: Exit", 10, controls_y + 12, COLOR_TEXT_DIM)
+        """Draw compact controls bar at bottom"""
+        cy = self.height - 14
+        self.display.fill_rect(0, cy - 2, 320, 16, COLOR_DARK_GRAY)
+        self.display.hline(0, cy - 2, 320, COLOR_GRAY)
+        self.display.text("Arrows:Move  P:Pause  S:Sound  ESC:Exit", 10, cy + 1, COLOR_TEXT_DIM)
     
     def draw_game_over(self):
-        """Draw game over screen"""
-        # Game over box
-        box_x = self.width // 2 - 60
-        box_y = self.height // 2 - 40
-        box_w = 120
-        box_h = 80
-        
-        self.display.fill_rect(box_x, box_y, box_w, box_h, COLOR_BLACK)
-        self.display.rect(box_x, box_y, box_w, box_h, COLOR_WHITE)
-        
-        # Text
-        self.display.text("GAME OVER", box_x + 20, box_y + 15, COLOR_WHITE)
-        self.display.text(f"Score: {self.score}", box_x + 25, box_y + 35, COLOR_TEXT)
-        self.display.text(f"Best: {self.high_score}", box_x + 25, box_y + 47, COLOR_TEXT)
-        self.display.text("Any key...", box_x + 20, box_y + 59, COLOR_WHITE)
-    
+        """Draw game over overlay"""
+        cx, cy = self.width // 2, self.height // 2
+        bw, bh = 150, 80
+        bx, by = cx - bw // 2, cy - bh // 2
+
+        self.display.fill_rect(bx, by, bw, bh, COLOR_BLACK)
+        self.display.rect(bx, by, bw, bh, COLOR_WHITE)
+        self.display.rect(bx + 2, by + 2, bw - 4, bh - 4, COLOR_GRAY)
+
+        self.display.text("GAME  OVER", bx + 30, by + 10, COLOR_WHITE)
+        self.display.hline(bx + 10, by + 22, bw - 20, COLOR_DARK_GRAY)
+        self.display.text(f"Score: {self.score}", bx + 15, by + 30, COLOR_LIGHT_GRAY)
+        self.display.text(f"Best:  {self.high_score}", bx + 15, by + 44, COLOR_LIGHT_GRAY)
+        self.display.text("Any key to restart", bx + 15, by + 62, COLOR_WHITE)
+
     def draw_pause(self):
-        """Draw pause screen"""
-        pause_x = self.width // 2 - 30
-        pause_y = self.height // 2 - 10
-        
-        self.display.fill_rect(pause_x - 5, pause_y - 5, 70, 30, COLOR_BLACK)
-        self.display.rect(pause_x - 5, pause_y - 5, 70, 30, COLOR_BORDER)
-        self.display.text("PAUSED", pause_x, pause_y, COLOR_WHITE)
-        self.display.text("P: Resume", pause_x - 3, pause_y + 12, COLOR_TEXT)
+        """Draw pause overlay"""
+        cx, cy = self.width // 2, self.height // 2
+        bw, bh = 120, 40
+        bx, by = cx - bw // 2, cy - bh // 2
+
+        self.display.fill_rect(bx, by, bw, bh, COLOR_BLACK)
+        self.display.rect(bx, by, bw, bh, COLOR_LIGHT_GRAY)
+        self.display.text("PAUSED", bx + 33, by + 8, COLOR_WHITE)
+        self.display.text("P to resume", bx + 24, by + 24, COLOR_TEXT_DIM)
     
     def draw(self):
         """Draw everything"""
+        self.display.beginDraw()
         # Only clear the game area to reduce flicker
         if not self.game_over and not self.paused:
-            # Clear only the board area
-            self.display.fill_rect(BOARD_X, BOARD_Y, 
-                                 GRID_SIZE * CELL_SIZE, 
+            self.display.fill_rect(BOARD_X, BOARD_Y,
+                                 GRID_SIZE * CELL_SIZE,
                                  GRID_SIZE * CELL_SIZE, COLOR_BLACK)
         else:
-            # Full clear for overlays
             self.display.fill(0)
             self.needs_full_redraw = True
-        
+
+        self.draw_header()
         self.draw_board()
         self.draw_snake()
         self.draw_food()
-        self.draw_stats()
         self.draw_controls()
-        
+
         if self.game_over:
             self.draw_game_over()
         elif self.paused:
             self.draw_pause()
-        
+
         self.display.show()
         self.needs_full_redraw = False
     
@@ -354,7 +344,7 @@ class SnakeGame:
         key_data = bytes(self.key_buffer[:count])
         
         # ESC - exit
-        if key_data == KEY_ESC:
+        if key_data == KEY_ESC or (count == 1 and self.key_buffer[0] == 0x1b):
             return "EXIT"
         
         # Game over state - any key restarts

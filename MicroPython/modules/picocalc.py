@@ -58,10 +58,17 @@ class PicoDisplay(framebuf.FrameBuffer):
         
     def stopRefresh(self):
         picocalcdisplay.stopAutoUpdate()
-    
+
     def recoverRefresh(self):
         picocalcdisplay.startAutoUpdate()
-    
+
+    def beginDraw(self):
+        """Block Core 1 display refresh until show() is called.
+        Call before fill(0) to prevent flicker from partial framebuffer push.
+        Safe no-op on firmware without beginDraw support."""
+        if hasattr(picocalcdisplay, 'beginDraw'):
+            picocalcdisplay.beginDraw()
+
     def text(self,c, x0, y0, color):
         picocalcdisplay.drawTxt6x8(c,x0,y0,color)
 
