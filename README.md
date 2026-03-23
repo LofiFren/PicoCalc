@@ -12,6 +12,8 @@ A MicroPython firmware and script collection for the Clockwork Pi PicoCalc handh
 
 ## Quick Start
 
+- YouTube PicoCalc 2.0 Demo: [https://youtu.be/gf3ittEwFJ8](https://youtu.be/gf3ittEwFJ8)
+
 ### 1. Flash the Firmware
 
 1. **Power off** the PicoCalc and unplug USB.
@@ -267,5 +269,5 @@ Built on [PicoCalc-micropython-driver](https://github.com/zenodante/PicoCalc-mic
 - Issues: [GitHub Issues](https://github.com/LofiFren/PicoCalc/issues)
 - IG: [@lofifren](https://www.instagram.com/lofifren/)
 - YT: [@lofifren](https://www.youtube.com/@lofifren)
-- YouTube Demo: [https://youtu.be/fBSM1_YXDM4](https://youtu.be/fBSM1_YXDM4)
+- YouTube PicoCalc 2.0 Demo: [https://youtu.be/gf3ittEwFJ8](https://youtu.be/gf3ittEwFJ8)
 - Playlist: [PicoCalc Playlist](https://www.youtube.com/playlist?list=PL9WsMKb7awj9qmWcUHpMxpqV1nPUyIeuq)
