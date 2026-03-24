@@ -18,7 +18,7 @@ A MicroPython firmware and script collection for the Clockwork Pi PicoCalc handh
 
 1. **Power off** the PicoCalc and unplug USB.
 2. **Hold BOOTSEL** on the Pico 2W, then connect USB.
-3. A drive named **RPI-RP2** appears.
+3. A drive named **RP2350** appears.
 4. Copy `MicroPython/firmware/picocalc_micropython_pico2w.uf2` to that drive.
 5. The device reboots automatically.
 
