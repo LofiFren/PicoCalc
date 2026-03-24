@@ -15,9 +15,9 @@ try:
     time.sleep_ms(900)
     import sdcard
     time.sleep_ms(1900)
-    print("✅ sdcard module is available")
+    print("[OK] sdcard module is available")
 except ImportError:
-    print("❌ sdcard module not found - please install it first")
+    print("[X] sdcard module not found - please install it first")
     sys.exit(1)
 
 # First, try to see what's currently at /sd
@@ -34,17 +34,17 @@ try:
     print(f"- Current reported size: {total_mb:.2f} MB")
     
     if total_mb < 5:
-        print("⚠️ This appears to be just a directory, not a mounted SD card")
+        print("[!] This appears to be just a directory, not a mounted SD card")
 except:
-    print("❌ /sd doesn't exist or can't be accessed")
+    print("[X] /sd doesn't exist or can't be accessed")
 
 # Try to unmount if already mounted
 try:
     print("\nTrying to unmount existing /sd...")
     os.umount("/sd")
-    print("✅ Successfully unmounted")
+    print("[OK] Successfully unmounted")
 except:
-    print("ℹ️ Nothing to unmount")
+    print("[i] Nothing to unmount")
 
 # Display memory before SD card initialization
 gc.collect()
@@ -84,7 +84,7 @@ try:
     # Mount the SD card
     print("Mounting SD card to /sd...")
     os.mount(sd, "/sd")
-    print("✅ SD card mounted successfully!")
+    print("[OK] SD card mounted successfully!")
     
     # Check storage info
     print("\nChecking SD card capacity:")
@@ -122,34 +122,34 @@ try:
                 item_stat = os.stat(f"/sd/{item}")
                 is_dir = item_stat[0] & 0x4000
                 size = item_stat[6]
-                print(f"- {'📁' if is_dir else '📄'} {item}" + (f" ({size} bytes)" if not is_dir else ""))
+                print(f"- {'' if is_dir else ''} {item}" + (f" ({size} bytes)" if not is_dir else ""))
             except:
-                print(f"- ❓ {item}")
+                print(f"- [?] {item}")
     
     # Check if we can write to the card
     print("\nTesting write access:")
     try:
         with open("/sd/test.txt", "w") as f:
             f.write("This is a test file created by the SD card test script")
-        print("✅ Successfully wrote test file")
+        print("[OK] Successfully wrote test file")
         
         # Read it back
         with open("/sd/test.txt", "r") as f:
             content = f.read()
-        print(f"✅ Successfully read back: {content[:20]}...")
+        print(f"[OK] Successfully read back: {content[:20]}...")
         
         # Delete the test file
         os.remove("/sd/test.txt")
-        print("✅ Successfully deleted test file")
+        print("[OK] Successfully deleted test file")
     except Exception as e:
-        print(f"❌ Write test failed: {e}")
+        print(f"[X] Write test failed: {e}")
     
     print("\n==== SD CARD TEST COMPLETE ====")
     print("Your SD card is properly initialized and mounted!")
     print("The 32GB capacity should now be available at /sd")
     
 except Exception as e:
-    print(f"\n❌ SD card initialization failed: {e}")
+    print(f"\n[X] SD card initialization failed: {e}")
     print("\nTroubleshooting tips:")
     print("1. Double-check that your SD card is properly inserted")
     print("2. Make sure the SD card is formatted as FAT32")

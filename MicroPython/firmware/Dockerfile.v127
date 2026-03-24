@@ -1,0 +1,48 @@
+FROM ubuntu:24.04
+
+RUN apt-get update && apt-get install -y \
+    git cmake build-essential gcc-arm-none-eabi libnewlib-arm-none-eabi \
+    python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# MicroPython v1.27.0 with two patches:
+#   1. USB-CDC fix for RP2350 (restores --wrap=dcd_event_handler)
+#   2. BLE pairing/bonding enabled (MICROPY_PY_BLUETOOTH_ENABLE_PAIRING_BONDING=1)
+# See USB_REGRESSION_FIX.md for full details.
+RUN git clone https://github.com/micropython/micropython.git /micropython \
+    && cd /micropython && git checkout v1.27.0
+
+WORKDIR /micropython
+RUN git submodule update --init --depth 1 lib/pico-sdk lib/tinyusb lib/mbedtls lib/micropython-lib
+RUN cd lib/pico-sdk && git submodule update --init --depth 1
+
+# Patch 1: restore USB device event handler wrap (fixes RP2350 USB enumeration)
+RUN sed -i 's|-Wl,--wrap=runtime_init_clocks|    -Wl,--wrap=dcd_event_handler\n    -Wl,--wrap=runtime_init_clocks|' \
+    ports/rp2/CMakeLists.txt
+RUN sed -i '/^TU_ATTR_FAST_FUNC void MICROPY_WRAP_TUD_EVENT_HOOK_CB/i\
+extern void __real_dcd_event_handler(dcd_event_t const *event, bool in_isr);\
+\
+TU_ATTR_FAST_FUNC void __wrap_dcd_event_handler(dcd_event_t const *event, bool in_isr) {\
+    __real_dcd_event_handler(event, in_isr);\
+    mp_usbd_schedule_task();\
+    mp_hal_wake_main_task_from_isr();\
+}\
+' shared/tinyusb/mp_usbd.c
+
+# Patch 2: enable BLE pairing/bonding APIs (btstack code exists, just compiled out)
+RUN echo '#define MICROPY_PY_BLUETOOTH_ENABLE_PAIRING_BONDING (1)' >> \
+    ports/rp2/boards/RPI_PICO2_W/mpconfigboard.h
+
+RUN make -C mpy-cross -j$(nproc)
+
+WORKDIR /micropython/ports/rp2
+RUN make BOARD=RPI_PICO2_W submodules
+
+# Usage (from repo root):
+#   docker build -t picocalc-v127 -f MicroPython/firmware/Dockerfile.v127 MicroPython/firmware/
+#   docker run --rm \
+#     -v $(pwd)/MicroPython:/picocalc \
+#     -v $(pwd)/MicroPython/firmware:/out \
+#     picocalc-v127 \
+#     bash -c "make BOARD=RPI_PICO2_W USER_C_MODULES=/picocalc/micropython.cmake -j\$(nproc) && \
+#              cp build-RPI_PICO2_W/firmware.uf2 /out/picocalc_v127_pico2w.uf2"

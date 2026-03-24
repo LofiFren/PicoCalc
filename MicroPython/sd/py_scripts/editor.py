@@ -11,7 +11,7 @@ import utime
 import os
 import gc
 
-# ── VT100 helpers ─────────────────────────────────────────────────
+# -- VT100 helpers -------------------------------------------------
 _E = '\033'
 _BLK, _RED, _GRN, _YEL, _BLU, _MAG, _CYN, _WHT = range(8)
 _W = 53
@@ -47,7 +47,7 @@ def _box_h(n):
     _w('\x0e' + 'q' * n + '\x0f')
 
 
-# ── File utilities ────────────────────────────────────────────────
+# -- File utilities ------------------------------------------------
 
 def _list_dir(path):
     """List directory contents, return sorted (dirs first, then files)."""
@@ -77,7 +77,7 @@ def _fmt_size(b):
     return f'{b}B'
 
 
-# ── File Browser ──────────────────────────────────────────────────
+# -- File Browser --------------------------------------------------
 
 class FileBrowser:
     MAX_VIS = 30

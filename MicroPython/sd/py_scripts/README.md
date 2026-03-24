@@ -16,11 +16,10 @@ This directory contains MicroPython scripts for the PicoCalc device, organized b
 
 - `NetworkTools.py` - Unified launcher for all network tools with memory management
 - `WiFiManager.py` - WiFi connection management and utilities
-- `PicoBLE.py` - Bluetooth Low Energy functionality and device scanning
 
 ## Audio & Entertainment
 
-- `synth.py` - Advanced synthesizer with stereo output, waveform visualization, and audio routing
+- `synth.py` - 4-instrument synthesizer with piano keyboard, ADSR, arpeggiator, sequencer, presets ([full docs](../../../SYNTH.md))
 - `tetris.py` - Complete Tetris game implementation with sound effects and progressive difficulty
 
 ## AI Integration

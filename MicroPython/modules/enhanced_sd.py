@@ -202,11 +202,11 @@ def show_sd_info():
         
         # Print directories
         for d in sorted(dirs):
-            print(f"  📁 {d}/")
+            print(f"   {d}/")
         
         # Print files (limit to first 10)
         for name, size in sorted(files)[:10]:
-            print(f"  📄 {name} ({format_size(size)})")
+            print(f"   {name} ({format_size(size)})")
         
         if len(files) > 10:
             print(f"  ... and {len(files) - 10} more files")
@@ -220,9 +220,9 @@ def show_sd_info():
                     try:
                         stat = os.stat(f'/sd/py_scripts/{py}')
                         size = stat[6]
-                        print(f"  📄 {py} ({format_size(size)})")
+                        print(f"   {py} ({format_size(size)})")
                     except:
-                        print(f"  📄 {py}")
+                        print(f"   {py}")
         except:
             pass
             

@@ -112,7 +112,7 @@ class ProxiScan:
         self.last_draw = 0
         self.last_dev_count = 0
 
-    # ── BLE ────────────────────────────────────────────────
+    # -- BLE ------------------------------------------------
 
     def ble_irq(self, event, data):
         if event == 5 and self.scanning:
@@ -177,7 +177,7 @@ class ProxiScan:
         except:
             self.scanning = False
 
-    # ── Signal Processing ──────────────────────────────────
+    # -- Signal Processing ----------------------------------
 
     def _process_signal(self, rssi):
         self.target_history.append({
@@ -250,7 +250,7 @@ class ProxiScan:
         except:
             pass
 
-    # ── Drawing ────────────────────────────────────────────
+    # -- Drawing --------------------------------------------
 
     def _refresh_dev_list(self):
         self.dev_list = sorted(self.devices.items(),
@@ -587,7 +587,7 @@ class ProxiScan:
                 return
         d.text(text, 4, CTRL_Y + 8, C_MD)
 
-    # ── Input ──────────────────────────────────────────────
+    # -- Input ----------------------------------------------
 
     def check_key(self):
         if not picocalc.terminal:
@@ -696,7 +696,7 @@ class ProxiScan:
                 self._view_log()
         return True
 
-    # ── Competition ────────────────────────────────────────
+    # -- Competition ----------------------------------------
 
     def _mark_waypoint(self):
         if not self.timer_start:
@@ -772,7 +772,7 @@ class ProxiScan:
     def _toggle_audio(self):
         if not self.has_audio:
             return
-        # Cycle: freq → beep → off → freq
+        # Cycle: freq -> beep -> off -> freq
         if self.audio_on and self.audio_mode == 0:
             self.audio_mode = 1
         elif self.audio_on and self.audio_mode == 1:
@@ -783,7 +783,7 @@ class ProxiScan:
             self.audio_on = True
             self.audio_mode = 0
 
-    # ── Logging ────────────────────────────────────────────
+    # -- Logging --------------------------------------------
 
     def _log_data(self):
         if not self.target_mac or not self.target_history:
@@ -837,7 +837,7 @@ class ProxiScan:
         while not self.check_key():
             utime.sleep_ms(100)
 
-    # ── Lifecycle ──────────────────────────────────────────
+    # -- Lifecycle ------------------------------------------
 
     def cleanup(self):
         self.stop_scan()

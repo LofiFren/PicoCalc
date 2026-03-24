@@ -169,12 +169,12 @@ def initsd():
         try:
             entries = os.listdir(path)
         except OSError as e:
-            print(f"⚠️  Cannot open {path}: {e}")
+            print(f"[!]  Cannot open {path}: {e}")
             return  # Stop if path doesn't exist
 
         for entry in entries:
             if entry in ignore:
-                continue  # 🚫 Skip system files/folders
+                continue  # [X] Skip system files/folders
 
             full_path = path + "/" + entry
             try:
@@ -187,11 +187,11 @@ def initsd():
             except OSError as e:
                 print("  " * indent + f"Error reading {full_path}: {e}")
 
-    # 👇 Only run if /sd exists
+    #  Only run if /sd exists
     if "sd" in os.listdir("/"):
         list_dir("/sd")
     else:
-        print("⚠️  /sd not found. Is the SD card mounted?")
+        print("[!]  /sd not found. Is the SD card mounted?")
 
     return
 

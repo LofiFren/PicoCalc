@@ -26,7 +26,7 @@ class Demo:
         self.mode = 0
         self.frame = 0
         self._drawn_static = -1  # Which mode has its static content drawn
-        # Bouncing boxes — use simple predetermined values (no RNG needed)
+        # Bouncing boxes -- use simple predetermined values (no RNG needed)
         self.boxes = [
             [20,  40,  30, 24,  3,  2, 4],
             [80,  100, 36, 28, -2,  3, 7],
@@ -44,9 +44,9 @@ class Demo:
             return None
         return bytes(self.key_buf[:count])
 
-    # ── Mode: Palette ─────────────────────────────────────────────
+    # -- Mode: Palette ---------------------------------------------
     def _draw_palette_static(self):
-        """Draw the static palette grid once — no flicker."""
+        """Draw the static palette grid once -- no flicker."""
         self.d.beginDraw()
         self.d.fill(0)
 
@@ -73,14 +73,14 @@ class Demo:
     def draw_palette(self):
         if self._drawn_static != 0:
             self._draw_palette_static()
-        # Only update the animated bar — no beginDraw/fill needed
+        # Only update the animated bar -- no beginDraw/fill needed
         pulse = (self.frame // 3) % 16
         for x in range(32):
             shade = (pulse + x) % 16
             self.d.fill_rect(x * 10, 300, 10, 12, shade)
         self.d.show()
 
-    # ── Mode: Bouncing ────────────────────────────────────────────
+    # -- Mode: Bouncing --------------------------------------------
     def _draw_bouncing_static(self):
         """Draw static header once."""
         self.d.beginDraw()
@@ -112,7 +112,7 @@ class Demo:
         self.d.text(f"Frame {self.frame}", 4, 312, 5)
         self.d.show()
 
-    # ── Mode: Gradient ────────────────────────────────────────────
+    # -- Mode: Gradient --------------------------------------------
     def _draw_gradient_static(self):
         """Draw header once."""
         self.d.beginDraw()
@@ -125,7 +125,7 @@ class Demo:
         if self._drawn_static != 2:
             self._draw_gradient_static()
 
-        # Bands fully overwrite each other — no fill(0) needed
+        # Bands fully overwrite each other -- no fill(0) needed
         offset = (self.frame // 2) % 16
         band_h = 18
         for row in range(16):
@@ -137,7 +137,7 @@ class Demo:
 
         self.d.show()
 
-    # ── Mode: About ───────────────────────────────────────────────
+    # -- Mode: About -----------------------------------------------
     def _draw_about_static(self):
         """Draw the static about screen once."""
         self.d.beginDraw()
@@ -181,12 +181,12 @@ class Demo:
     def draw_about(self):
         if self._drawn_static != 3:
             self._draw_about_static()
-        # Only animate the border — no full redraw
+        # Only animate the border -- no full redraw
         pulse = (self.frame // 3) % 16
         self.d.rect(2, 2, 316, 316, pulse)
         self.d.show()
 
-    # ── Main loop ─────────────────────────────────────────────────
+    # -- Main loop -------------------------------------------------
     def draw(self):
         m = self.mode
         if m == 0: self.draw_palette()

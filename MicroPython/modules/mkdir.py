@@ -9,12 +9,12 @@ def mkdir(path):
     # Check if SD card is mounted
     try:
         if "sd" in os.listdir("/"):
-            print("✅ SD card found")
+            print("[OK] SD card found")
         else:
-            print("⚠️ /sd not found. Is the SD card inserted and mounted?")
+            print("[!] /sd not found. Is the SD card inserted and mounted?")
             return
     except Exception as e:
-        print(f"⚠️ Failed checking root filesystem: {e}")
+        print(f"[!] Failed checking root filesystem: {e}")
         return
 
     # Normalize path
@@ -29,15 +29,15 @@ def mkdir(path):
     try:
         entries = os.listdir(parent_path)
         if dir_name in entries:
-            print(f"📂 {path} already exists.")
+            print(f" {path} already exists.")
         else:
             try:
                 os.mkdir(path)
-                print(f"✅ Created {path} successfully!")
+                print(f"[OK] Created {path} successfully!")
             except OSError as e:
-                print(f"⚠️ Error creating {path}: {e}")
+                print(f"[!] Error creating {path}: {e}")
     except OSError as e:
-        print(f"⚠️ Error listing {parent_path}: {e}")
+        print(f"[!] Error listing {parent_path}: {e}")
 
 # Run example (comment out if using import)
 # mkdir("samples")  # This would create /sd/samples

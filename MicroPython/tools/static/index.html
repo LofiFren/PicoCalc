@@ -39,7 +39,7 @@
     overflow: hidden;
   }
 
-  /* ── Header ─────────────────────────── */
+  /* --- Header --- */
   header {
     display: flex;
     align-items: center;
@@ -64,7 +64,7 @@
   }
   .info-bar span { color: var(--text); }
 
-  /* ── Buttons ────────────────────────── */
+  /* --- Buttons --- */
   .btn {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 5px 10px; border: 1px solid var(--border); border-radius: 4px;
@@ -77,8 +77,10 @@
   .btn.primary { background: var(--cyan); color: var(--bg); border-color: var(--cyan); font-weight: 600; }
   .btn.primary:hover { background: #00bbdd; }
   .btn.sm { padding: 2px 6px; font-size: 10px; }
+  .btn.eject { border-color: #e0a030; color: #e0a030; }
+  .btn.eject:hover { background: rgba(224,160,48,0.1); border-color: #f0b840; color: #f0b840; }
 
-  /* ── Main dual-pane layout ──────────── */
+  /* --- Main dual-pane layout --- */
   .dual-pane {
     display: flex;
     flex: 1;
@@ -108,7 +110,7 @@
     padding: 4px 0;
   }
 
-  /* ── Center transfer column ─────────── */
+  /* --- Center transfer column --- */
   .transfer-col {
     display: flex;
     flex-direction: column;
@@ -130,7 +132,7 @@
   .transfer-btn:hover { border-color: var(--cyan); color: var(--cyan); background: rgba(0,212,255,0.05); }
   .transfer-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-  /* ── File list items ────────────────── */
+  /* --- File list items --- */
   .file-list { list-style: none; }
   .file-list ul { list-style: none; padding-left: 16px; }
   .fl-item {
@@ -145,7 +147,7 @@
   .fl-dir { color: var(--cyan); font-weight: 600; }
   .fl-actions { display: flex; gap: 3px; flex-shrink: 0; margin-left: 6px; }
 
-  /* ── Bottom panel (editor / console) ── */
+  /* --- Bottom panel (editor / console) --- */
   .bottom-panel {
     height: 240px;
     min-height: 80px;
@@ -211,7 +213,7 @@
     font-family: var(--mono); font-size: 12px; padding: 5px 0; outline: none;
   }
 
-  /* ── Toast ──────────────────────────── */
+  /* --- Toast --- */
   .toast {
     position: fixed; bottom: 16px; right: 16px;
     padding: 8px 16px; border-radius: 4px; font-size: 12px;
@@ -221,7 +223,27 @@
   .toast.ok { background: rgba(0,255,136,0.15); border: 1px solid var(--green); color: var(--green); }
   .toast.err { background: rgba(255,68,102,0.15); border: 1px solid var(--red); color: var(--red); }
 
-  /* ── Cheat sheet ─────────────────────── */
+  /* --- Side-by-side diff --- */
+  .sdiff { width: 100%; border-collapse: collapse; font-size: 11px; font-family: var(--mono); table-layout: fixed; }
+  .sdiff td { padding: 1px 6px; vertical-align: top; white-space: pre-wrap; word-break: break-all; overflow: hidden; }
+  .sdiff .ln { width: 32px; color: var(--dim); text-align: right; user-select: none; padding-right: 4px; border-right: 1px solid var(--border); }
+  .sdiff .sep { width: 4px; background: var(--border); padding: 0; }
+  .sdiff .code { width: calc(50% - 36px); }
+  .sdiff tr.eq .code { color: var(--text); }
+  .sdiff tr.chg .code { color: var(--amber); }
+  .sdiff tr.chg td.code-l { background: rgba(255,170,0,0.06); }
+  .sdiff tr.chg td.code-r { background: rgba(0,255,136,0.06); }
+  .sdiff tr.del .code-l { color: var(--red); background: rgba(255,68,102,0.08); }
+  .sdiff tr.del .code-r { color: var(--dim); }
+  .sdiff tr.ins .code-l { color: var(--dim); }
+  .sdiff tr.ins .code-r { color: var(--green); background: rgba(0,255,136,0.08); }
+  .sdiff-wrap { overflow: auto; height: 100%; }
+  .sdiff-header { display: flex; justify-content: space-between; padding: 4px 8px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 11px; }
+  .sdiff-header span { font-family: var(--mono); }
+  .sdiff-header .dh-device { color: var(--red); }
+  .sdiff-header .dh-local { color: var(--green); }
+
+  /* --- Cheat sheet --- */
   .cheat-section {
     color: var(--cyan); font-size: 10px; text-transform: uppercase;
     letter-spacing: 1px; margin-top: 8px; margin-bottom: 2px;
@@ -232,10 +254,10 @@
   }
   .cheat-cmd:hover { background: rgba(0,212,255,0.1); color: var(--cyan); }
 
-  /* ── Drop highlight on device pane ──── */
+  /* --- Drop highlight on device pane --- */
   .pane.dragover .pane-body { outline: 2px dashed var(--cyan); outline-offset: -4px; }
 
-  /* ── Modified file shimmer ──────────── */
+  /* --- Modified file shimmer --- */
   .fl-item.modified .fl-name {
     color: var(--amber);
     animation: shimmer 2s ease-in-out infinite;
@@ -248,12 +270,14 @@
     50% { opacity: 0.5; }
   }
   .fl-modified-dot {
-    width: 6px; height: 6px; border-radius: 50%;
+    width: 8px; height: 8px; border-radius: 50%;
     background: var(--amber); flex-shrink: 0;
     animation: shimmer 2s ease-in-out infinite;
+    box-shadow: 0 0 4px var(--amber);
+    cursor: pointer;
   }
 
-  /* ── Resize handles ─────────────────── */
+  /* --- Resize handles --- */
   .resize-h {
     width: 5px;
     cursor: col-resize;
@@ -278,7 +302,7 @@
 </head>
 <body>
 
-<!-- ── Header ──────────────────────────────────────────────────── -->
+<!-- --- Header --- -->
 <header>
   <h1>PICOCALC DASHBOARD</h1>
   <div class="info-bar">
@@ -294,10 +318,11 @@
     <button class="btn" onclick="deploy('all')">Deploy All</button>
     <button class="btn" onclick="cleanupDevice()">Cleanup</button>
     <button class="btn" onclick="resetDevice()">Reset</button>
+    <button class="btn eject" onclick="ejectDevice()" title="Restart menu on device, safe to unplug">Eject</button>
   </div>
 </header>
 
-<!-- ── Dual Pane ───────────────────────────────────────────────── -->
+<!-- --- Dual Pane --- -->
 <div class="dual-pane">
 
   <!-- LOCAL pane -->
@@ -305,6 +330,7 @@
     <div class="pane-header">
       <span class="pane-title"><b>Local</b> (project files)</span>
       <div style="display:flex;gap:4px">
+        <button class="btn sm" onclick="newScript()" title="Create new script">+ New</button>
         <button class="btn sm" onclick="deploy('boot')">Boot</button>
         <button class="btn sm" onclick="deploy('modules')">Modules</button>
         <button class="btn sm" onclick="deploy('scripts')">Scripts</button>
@@ -344,7 +370,7 @@
 <!-- Vertical resize handle -->
 <div class="resize-v" id="resizeV"></div>
 
-<!-- ── Bottom Panel (Editor / Log / REPL) ──────────────────────── -->
+<!-- --- Bottom Panel (Editor / Log / REPL) --- -->
 <div class="bottom-panel" id="bottomPanel">
   <div class="bottom-tabs">
     <button class="bottom-tab active" onclick="switchTab('editor')">Editor</button>
@@ -360,6 +386,7 @@
     <div class="tab-pane active" id="pane-editor">
       <div class="editor-toolbar">
         <span class="editor-path" id="editorPath">No file selected</span>
+        <button class="btn sm" onclick="newScript()" title="Create new script">+ New</button>
         <button class="btn sm" id="btnSave" onclick="saveFile()" disabled>Save to Device</button>
         <button class="btn sm" id="btnSaveLocal" onclick="saveFileLocal()" disabled>Save Local</button>
       </div>
@@ -378,6 +405,7 @@
       <div id="replCheatPanel" style="display:none; border-top:1px solid var(--border); max-height:50%; overflow-y:auto; padding:8px 12px; font-size:11px; line-height:2; background:var(--bg)">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px">
           <span style="color:var(--cyan); font-size:11px; text-transform:uppercase; letter-spacing:1px">REPL Cheat Sheet</span>
+          <span style="color:var(--dim); font-size:10px; margin-left:8px">(uses mpremote -- commands timeout after 30s)</span>
           <button class="btn sm" onclick="document.getElementById('replCheatPanel').style.display='none'">close</button>
         </div>
         <div class="cheat-section">Run Scripts</div>
@@ -400,13 +428,16 @@
         <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="from brad import connect; connect()">from brad import connect; connect()</div>
         <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="from brad import status; status()">from brad import status; status()</div>
         <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="from brad import scan; scan()">from brad import scan; scan()</div>
+        <div class="cheat-section">Synth (launch from device menu -- too large for REPL)</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import os&#10;try: print(os.listdir('/sd/synth_presets'))&#10;except: print('No presets saved yet')">List synth presets</div>
+        <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import json&#10;try: print(json.load(open('/sd/synth_presets/USER_preset.json')))&#10;except: print('No user preset saved yet')">Load user preset JSON</div>
         <div class="cheat-section">Reset</div>
         <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import machine; machine.soft_reset()">import machine; machine.soft_reset()</div>
         <div class="cheat-cmd" onclick="runCheat(this.dataset.cmd)" data-cmd="import machine; machine.reset()">import machine; machine.reset()</div>
       </div>
       <div class="console-input-row">
         <span class="console-prompt">&gt;&gt;&gt;</span>
-        <input class="console-input" id="replLine" placeholder="Enter Python..."
+        <input class="console-input" id="replLine" placeholder="Enter Python... (mpremote, 30s timeout)"
                onkeydown="handleReplKey(event)">
       </div>
     </div>
@@ -418,7 +449,7 @@
 <input type="file" id="fileInput" accept=".py" style="display:none" onchange="handleFilePick(event)">
 
 <script>
-// ── State ────────────────────────────────────────────────────────
+// --- State ---
 let connected = false, busy = false;
 let localSelected = null;   // relative path like "modules/picocalc.py"
 let deviceSelected = null;  // absolute path like "/modules/picocalc.py"
@@ -426,7 +457,7 @@ let editorSource = null;    // {side: 'local'|'device', path: '...'}
 let editorOriginal = '';
 let replHistory = [], historyIdx = -1;
 
-// ── Helpers ──────────────────────────────────────────────────────
+// --- Helpers ---
 function fmt(b) {
   if (b >= 1073741824) return (b/1073741824).toFixed(1)+' GB';
   if (b >= 1048576) return (b/1048576).toFixed(1)+' MB';
@@ -454,7 +485,7 @@ async function api(path, opts={}) {
   catch(e) { return {error: e.message}; }
 }
 
-// ── Device polling ───────────────────────────────────────────────
+// --- Device polling ---
 async function pollDevice() {
   const d = await api('/api/device');
   const dot = document.getElementById('statusDot');
@@ -469,7 +500,7 @@ async function pollDevice() {
     document.getElementById('infoFw').textContent = d.version || '--';
     // Auto-refresh device tree on new connection
     if (!wasConnected) {
-      log('Device connected — loading files...', 'log-info');
+      log('Device connected -- loading files...', 'log-info');
       buildDeviceTree();
     }
   } else {
@@ -478,7 +509,7 @@ async function pollDevice() {
   }
 }
 
-// ── Local file tree ──────────────────────────────────────────────
+// --- Local file tree ---
 async function buildLocalTree() {
   const data = await api('/api/local/tree');
   const ul = document.getElementById('localTree');
@@ -501,7 +532,7 @@ async function buildLocalTree() {
 
       let indicator = '';
       if (f.status === 'missing') indicator = '<span class="fl-modified-dot" title="Not on device"></span>';
-      else if (f.status === 'modified') indicator = '<span class="fl-modified-dot" title="Size differs from device"></span>';
+      else if (f.status === 'modified') indicator = '<span class="fl-modified-dot" title="Modified -- click to diff"></span>';
 
       item.innerHTML = `<span class="fl-icon">&#x25AB;</span><span class="fl-name">${f.name.split('/').pop()}</span>${indicator}<span class="fl-size">${fmt(f.size)}</span><button class="btn sm" style="margin-left:6px" onclick="event.stopPropagation(); pushFile('${f.name}')">push</button><button class="btn sm" onclick="event.stopPropagation(); openLocalFile('${f.name}')">edit</button>`;
       item.draggable = true;
@@ -513,8 +544,13 @@ async function buildLocalTree() {
       item.ondragend = () => {
         document.getElementById('devicePane').classList.remove('dragover');
       };
-      item.onclick = () => selectLocal(f.name, item);
-      item.ondblclick = () => openLocalFile(f.name);
+      // Modified files -> auto-diff; clean files -> open in editor
+      const fileStatus = f.status;
+      item.onclick = () => {
+        selectLocal(f.name, item);
+        if (fileStatus === 'modified') { diffSelected(); }
+        else { openLocalFile(f.name); }
+      };
       fli.appendChild(item);
       sub.appendChild(fli);
     }
@@ -541,7 +577,32 @@ async function openLocalFile(relPath) {
   openEditor('local', relPath, data.content);
 }
 
-// ── Device file tree ─────────────────────────────────────────────
+// --- New script ---
+async function newScript() {
+  const name = prompt('New script name (e.g. my_app.py):');
+  if (!name) return;
+  const clean = name.trim().replace(/[^a-zA-Z0-9_.\-]/g, '');
+  if (!clean) { toast('Invalid filename', 'err'); return; }
+  const fname = clean.endsWith('.py') ? clean : clean + '.py';
+  const relPath = 'sd/py_scripts/' + fname;
+  const template = '"""\n' + fname.replace('.py','') + ' for PicoCalc\n"""\nimport picocalc\nimport utime\nimport gc\n\ngc.collect()\n\n\ndef main():\n    d = picocalc.display\n    d.beginDraw()\n    d.fill(0)\n    d.text("' + fname.replace('.py','') + '", 10, 10, 15)\n    d.show()\n\n    # Your code here\n\n    utime.sleep(2)\n\n\nif __name__ == "__main__":\n    main()\n';
+  // Save via local file API
+  const data = await api('/api/local/file', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({path: relPath, content: template})
+  });
+  if (data.ok) {
+    log('Created: ' + relPath, 'log-ok');
+    toast('Created ' + fname);
+    await buildLocalTree();
+    openEditor('local', relPath, template);
+  } else {
+    log('Failed: ' + (data.error || ''), 'log-err');
+    toast('Create failed', 'err');
+  }
+}
+
+// --- Device file tree ---
 let _buildingDeviceTree = false;
 async function buildDeviceTree() {
   if (_buildingDeviceTree) return;  // Prevent concurrent builds
@@ -549,7 +610,7 @@ async function buildDeviceTree() {
   try {
     const ul = document.getElementById('deviceTree');
     ul.innerHTML = '';
-    // Only load root — sd/ and its children are navigable via click
+    // Only load root -- sd/ and its children are navigable via click
     await addDeviceDir(ul, '/', true);
   } finally {
     _buildingDeviceTree = false;
@@ -602,8 +663,7 @@ async function addDeviceDir(parent, path, expanded) {
         <button class="btn sm" onclick="event.stopPropagation(); editDeviceFile('${fullPath}')">edit</button>
         <button class="btn sm" style="color:var(--red)" onclick="event.stopPropagation(); deleteDeviceFile('${fullPath}')">del</button>
       `;
-      item.onclick = () => selectDevice(fullPath, item);
-      item.ondblclick = () => editDeviceFile(fullPath);
+      item.onclick = () => { selectDevice(fullPath, item); editDeviceFile(fullPath); };
       fli.appendChild(item);
     }
     sub.appendChild(fli);
@@ -647,7 +707,7 @@ async function deleteDeviceDir(path) {
   else { toast('Delete failed', 'err'); log('Failed to delete: ' + path, 'log-err'); }
 }
 
-// ── Transfer buttons ─────────────────────────────────────────────
+// --- Transfer buttons ---
 function updateTransferButtons() {
   document.getElementById('btnPushFile').disabled = !localSelected;
   document.getElementById('btnDiffFile').disabled = !localSelected;
@@ -655,6 +715,7 @@ function updateTransferButtons() {
 }
 
 async function pushFile(localRel) {
+  switchTab('log');
   log('Pushing ' + localRel + '...', 'log-info');
   setBusy(true);
   const data = await api('/api/push', {
@@ -679,6 +740,7 @@ async function pushSelected() {
 }
 
 async function pullDeviceFile(devicePath) {
+  switchTab('log');
   log('Pulling ' + devicePath + '...', 'log-info');
   setBusy(true);
   const data = await api('/api/pull', {
@@ -713,14 +775,52 @@ async function diffSelected() {
   document.getElementById('btnSave').disabled = true;
   document.getElementById('btnSaveLocal').disabled = true;
   editorSource = null;
+
   if (data.identical) {
     editorSetValue('Files are identical.', true);
-  } else {
-    editorSetValue(data.diff, true);
+    document.getElementById('editorWrap').style.display = '';
+    const sdv = document.getElementById('sdiffView');
+    if (sdv) sdv.style.display = 'none';
+    return;
   }
+
+  // Hide CodeMirror, show side-by-side diff
+  document.getElementById('editorWrap').style.display = 'none';
+  let sdv = document.getElementById('sdiffView');
+  if (!sdv) {
+    sdv = document.createElement('div');
+    sdv.id = 'sdiffView';
+    sdv.className = 'sdiff-wrap';
+    document.getElementById('editorWrap').parentNode.appendChild(sdv);
+  }
+  sdv.style.display = '';
+
+  const d = data.diff;
+  const esc = s => s == null ? '' : s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let html = '<div class="sdiff-header"><span class="dh-device">device: ' + esc(d.device) + '</span><span class="dh-local">local: ' + esc(d.local) + '</span></div>';
+  html += '<table class="sdiff"><colgroup><col class="ln"><col class="code"><col class="sep"><col class="ln"><col class="code"></colgroup>';
+  for (const r of d.rows) {
+    html += '<tr class="' + r.t + '">';
+    html += '<td class="ln">' + (r.ln_l != null ? r.ln_l : '') + '</td>';
+    html += '<td class="code code-l">' + (r.l != null ? esc(r.l) : '') + '</td>';
+    html += '<td class="sep"></td>';
+    html += '<td class="ln">' + (r.ln_r != null ? r.ln_r : '') + '</td>';
+    html += '<td class="code code-r">' + (r.r != null ? esc(r.r) : '') + '</td>';
+    html += '</tr>';
+  }
+  html += '</table>';
+  sdv.innerHTML = html;
 }
 
-// ── Editor (CodeMirror) ──────────────────────────────────────────
+function hideSdiff() {
+  document.getElementById('editorWrap').style.display = '';
+  const sdv = document.getElementById('sdiffView');
+  if (sdv) sdv.style.display = 'none';
+  // CodeMirror needs a refresh after being unhidden
+  if (cm) setTimeout(() => cm.refresh(), 10);
+}
+
+// --- Editor (CodeMirror) ---
 let cm = null;
 
 let lintTimer = null;
@@ -793,6 +893,7 @@ function editorSetValue(content, readOnly) {
 }
 
 function openEditor(side, path, content) {
+  hideSdiff();
   switchTab('editor');
   editorSource = {side, path};
   editorOriginal = content;
@@ -849,7 +950,7 @@ async function saveFileLocal() {
   }
 }
 
-// ── Deploy ───────────────────────────────────────────────────────
+// --- Deploy ---
 async function deploy(target) {
   log('Deploy: ' + target + '...', 'log-info');
   setBusy(true); switchTab('log');
@@ -866,7 +967,7 @@ async function deploy(target) {
   pollDevice();
 }
 
-// ── Cleanup macOS junk ───────────────────────────────────────────
+// --- Cleanup macOS junk ---
 async function cleanupDevice() {
   log('Cleaning junk files (macOS litter, stale v1.0 dirs)...', 'log-info');
   setBusy(true); switchTab('log');
@@ -879,12 +980,12 @@ async function cleanupDevice() {
     toast(data.summary);
     buildDeviceTree();
   } else {
-    log('Device is clean — no macOS junk found', 'log-ok');
+    log('Device is clean -- no macOS junk found', 'log-ok');
     toast('Already clean');
   }
 }
 
-// ── Reset ────────────────────────────────────────────────────────
+// --- Reset ---
 async function resetDevice() {
   log('Resetting...', 'log-info'); setBusy(true);
   await api('/api/reset', {method:'POST'}); setBusy(false);
@@ -892,7 +993,41 @@ async function resetDevice() {
   setTimeout(pollDevice, 3000);
 }
 
-// ── Drag and drop onto device pane ───────────────────────────────
+// --- Eject ---
+async function ejectDevice() {
+  connected = false;
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  dot.className = 'status-dot';
+  log('Ejecting -- countdown on device screen...', 'log-info');
+  toast('Unplug USB now!');
+  // Start browser countdown in sync with device countdown
+  let sec = 7;
+  txt.textContent = 'Unplug USB -- reboot in ' + sec + 's';
+  const countdown = setInterval(() => {
+    sec--;
+    if (sec > 0) {
+      txt.textContent = 'Unplug USB -- reboot in ' + sec + 's';
+    } else {
+      clearInterval(countdown);
+      txt.textContent = 'Ejected -- device rebooting';
+    }
+  }, 1000);
+  // Fire the API call (blocks ~7s while device shows countdown)
+  setBusy(true);
+  const result = await api('/api/eject', {method:'POST'});
+  setBusy(false);
+  clearInterval(countdown);
+  if (result.ok) {
+    txt.textContent = 'Ejected -- device rebooting';
+    log('Device rebooting. Menu will appear shortly.', 'log-ok');
+  } else {
+    txt.textContent = 'Ejected';
+    log('Eject sent (device may have rebooted before responding).', 'log-info');
+  }
+}
+
+// --- Drag and drop onto device pane ---
 async function handlePaneDrop(e) {
   e.preventDefault();
   document.getElementById('devicePane').classList.remove('dragover');
@@ -922,7 +1057,7 @@ function handleFilePick(e) {
   e.target.value = '';
 }
 
-// ── REPL ─────────────────────────────────────────────────────────
+// --- REPL ---
 async function handleReplKey(e) {
   if (e.key === 'Enter') { sendRepl(); }
   else if (e.key === 'ArrowUp' && replHistory.length) {
@@ -945,7 +1080,7 @@ async function sendRepl() {
   out.scrollTop = out.scrollHeight;
 }
 
-// ── REPL cheat sheet ─────────────────────────────────────────────
+// --- REPL cheat sheet ---
 async function runCheat(code) {
   document.getElementById('replCheatPanel').style.display = 'none';
   document.getElementById('replLine').value = code;
@@ -957,7 +1092,7 @@ function toggleCheatSheet() {
   panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }
 
-// ── Tab switching ────────────────────────────────────────────────
+// --- Tab switching ---
 function switchTab(name) {
   document.querySelectorAll('.bottom-tab').forEach((t,i) => {
     const tabs = ['editor','log','repl'];
@@ -970,7 +1105,7 @@ function switchTab(name) {
   if (name === 'repl') document.getElementById('replLine').focus();
 }
 
-// ── Refresh ──────────────────────────────────────────────────────
+// --- Refresh ---
 async function refreshDeviceTree() {
   log('Refreshing device files...', 'log-dim');
   await buildDeviceTree();
@@ -978,7 +1113,7 @@ async function refreshDeviceTree() {
   log('Refreshed.', 'log-ok');
 }
 
-// ── Resizable panels ─────────────────────────────────────────────
+// --- Resizable panels ---
 (function() {
   // Horizontal splitter: resize left/right panes
   const hHandle = document.getElementById('resizeH');
@@ -1040,14 +1175,19 @@ async function refreshDeviceTree() {
   });
 })();
 
-// ── Init ─────────────────────────────────────────────────────────
+// --- Init ---
 async function init() {
   initEditor();
   log('PicoCalc Dashboard started', 'log-info');
   await pollDevice();
   await buildDeviceTree();   // Device first so local can compare
   await buildLocalTree();    // Then local with modified indicators
-  setInterval(pollDevice, 5000);
+  // Adaptive polling: fast when disconnected (1.5s), slow when connected (5s)
+  async function adaptivePoll() {
+    await pollDevice();
+    setTimeout(adaptivePoll, connected ? 5000 : 1500);
+  }
+  setTimeout(adaptivePoll, connected ? 5000 : 1500);
   setInterval(buildLocalTree, 10000);  // Re-scan local files every 10s
 }
 init();

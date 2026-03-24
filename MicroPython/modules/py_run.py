@@ -4,7 +4,7 @@ import gc
 import picocalc
 import utime
 
-# ── VT100 helpers ──────────────────────────────────────────────
+# -- VT100 helpers ----------------------------------------------
 _E = '\033'
 # Colors
 _BLK, _RED, _GRN, _YEL, _BLU, _MAG, _CYN, _WHT = range(8)
@@ -63,7 +63,7 @@ def _box_v():
     _w('\x0ex\x0f')
 
 
-# ── File utilities ─────────────────────────────────────────────
+# -- File utilities ---------------------------------------------
 
 def find_py_files(base_path="/sd"):
     py_files = []
@@ -84,39 +84,6 @@ def find_py_files(base_path="/sd"):
         print(f"Error listing {base_path}: {e}")
     return py_files
 
-def delete_file(script_path, base_path="/sd"):
-    try:
-        full_path = f"{base_path}/{script_path}.py"
-        try:
-            os.stat(full_path)
-        except OSError:
-            print(f"File not found: {script_path}.py")
-            return False
-
-        try:
-            stat = os.stat(full_path)
-            size = stat[6]
-            print(f"\nFile: {script_path}.py")
-            print(f"Size: {size} bytes")
-            print(f"Path: {full_path}")
-        except:
-            pass
-
-        print(f"\nAre you sure you want to delete '{script_path}.py'?")
-        print("This action cannot be undone!")
-        confirm = input("Delete file? (y/N): ").strip().lower()
-
-        if confirm == "y":
-            os.remove(full_path)
-            print(f"File '{script_path}.py' has been deleted.")
-            return True
-        else:
-            print("Deletion cancelled.")
-            return False
-
-    except Exception as e:
-        print(f"Error deleting {script_path}: {e}")
-        return False
 
 def run_script(script_path, base_path="/sd"):
     try:
@@ -142,96 +109,8 @@ def run_script(script_path, base_path="/sd"):
     except Exception as e:
         print(f"Failed running {script_path}: {e}")
 
-def flush_modules(exclude=("os", "sys", "gc")):
-    flushed = []
-    for name in list(sys.modules):
-        if name not in exclude and not name.startswith("micropython"):
-            sys.modules.pop(name, None)
-            flushed.append(name)
-    print(f"Flushed: {', '.join(flushed)}")
 
-def show_memory():
-    gc.collect()
-    print(f"RAM Free: {gc.mem_free()} bytes")
-    print(f"RAM Used: {gc.mem_alloc()} bytes")
-    try:
-        stat = os.statvfs('/sd')
-        block_size = stat[0]
-        total_blocks = stat[2]
-        free_blocks = stat[3]
-        total_space = block_size * total_blocks
-        free_space = block_size * free_blocks
-        used_space = total_space - free_space
-
-        def fmt(b):
-            if b >= 1024 * 1024:
-                return f"{b / (1024 * 1024):.2f} MB"
-            elif b >= 1024:
-                return f"{b / 1024:.2f} KB"
-            return f"{b} bytes"
-
-        print(f"\nStorage on /sd:")
-        print(f"Total: {fmt(total_space)}")
-        print(f"Used:  {fmt(used_space)}")
-        print(f"Free:  {fmt(free_space)}")
-        print(f"Usage: {int(used_space * 100 // total_space)}%")
-    except Exception as e:
-        print(f"Error getting storage info: {e}")
-
-
-# ── File management sub-menu (text mode) ──────────────────────
-
-def file_management_menu():
-    while True:
-        scripts = find_py_files()
-        if not scripts:
-            print("No Python files found.")
-            input("Press Enter to return to main menu...")
-            return
-
-        print("\n=== File Management ===")
-        for i, name in enumerate(scripts):
-            print(f"{i + 1}: {name}.py")
-
-        print("\nD: Delete  E: Edit  B: Back")
-        choice = input("\nEnter choice: ").strip().lower()
-
-        if choice == "b":
-            return
-        elif choice == "d":
-            print("\nSelect file to delete:")
-            for i, name in enumerate(scripts):
-                print(f"{i + 1}: {name}.py")
-            delete_choice = input("\nFile number: ").strip()
-            try:
-                index = int(delete_choice) - 1
-                if 0 <= index < len(scripts):
-                    delete_file(scripts[index])
-                else:
-                    print("Invalid selection.")
-            except ValueError:
-                print("Invalid input.")
-            input("Press Enter to continue...")
-        elif choice == "e":
-            print("\nSelect file to edit:")
-            for i, name in enumerate(scripts):
-                print(f"{i + 1}: {name}.py")
-            edit_choice = input("\nFile number: ").strip()
-            try:
-                index = int(edit_choice) - 1
-                if 0 <= index < len(scripts):
-                    picocalc.edit(f"/sd/{scripts[index]}.py")
-                else:
-                    print("Invalid selection.")
-            except ValueError:
-                print("Invalid input.")
-            input("Press Enter to continue...")
-        else:
-            print("Invalid choice.")
-            input("Press Enter to continue...")
-
-
-# ── Main menu with arrow-key navigation ───────────────────────
+# -- Main menu with arrow-key navigation -----------------------
 
 class _Menu:
     def __init__(self):
@@ -274,7 +153,7 @@ class _Menu:
         _clr()
         _cursor(False)
 
-        # ── Header ─────────────────────────────────────────
+        # -- Header -----------------------------------------
         _at(1, 1)
         _style(fg=_WHT, bg=_BLU, bold=True)
         _w(' ' * _W)
@@ -295,7 +174,7 @@ class _Menu:
         _box_h(_W)
         _rst()
 
-        # ── Section header ─────────────────────────────────
+        # -- Section header ---------------------------------
         _at(3, 2)
         _style(fg=_CYN, bold=True)
         _w('SCRIPTS')
@@ -305,7 +184,7 @@ class _Menu:
             _w(f'  ({n})')
             _rst()
 
-        # ── Script list ────────────────────────────────────
+        # -- Script list ------------------------------------
         if n == 0:
             _at(5, 4)
             _style(dim=True)
@@ -334,7 +213,7 @@ class _Menu:
 
                 _at(row, 1)
                 if idx == self.sel:
-                    # ── Selected item ──
+                    # -- Selected item --
                     _style(fg=_BLK, bg=_GRN, bold=True)
                     _w(f' \x10 {name:<{_W - 4}}')
                     _rst()
@@ -355,7 +234,7 @@ class _Menu:
                 _rst()
                 list_end += 1
 
-        # ── Footer ─────────────────────────────────────────
+        # -- Footer -----------------------------------------
         foot = list_end + 1
         _at(foot, 1)
         _fg(_BLU)
@@ -403,13 +282,274 @@ class _Menu:
     def _drain_keys(self):
         """Drain any stale key data from terminal buffer."""
         picocalc.terminal.dryBuffer()
-        # Also drain any hardware keyboard events
         for _ in range(10):
             try:
                 if not picocalc.terminal.readinto(self.key_buf):
                     break
             except:
                 break
+
+    def _wait_key(self):
+        """Block until any key pressed. Returns key bytes."""
+        while True:
+            key = self.check_key()
+            if key:
+                return key
+            utime.sleep_ms(50)
+
+    def _confirm(self, row, msg):
+        """Show Y/N prompt at row, poll for answer. No input()."""
+        _at(row, 3)
+        _style(fg=_YEL, bold=True)
+        _w(msg + ' (Y/N) ')
+        _rst()
+        while True:
+            key = self.check_key()
+            if key and len(key) == 1:
+                ch = key[0]
+                if ch in (ord('y'), ord('Y')):
+                    return True
+                if ch in (ord('n'), ord('N'), 0x1b):
+                    return False
+            utime.sleep_ms(50)
+
+    def _draw_tool_header(self, title):
+        """Draw a tool sub-screen header."""
+        _clr()
+        _cursor(False)
+        _at(1, 1)
+        _style(fg=_WHT, bg=_MAG, bold=True)
+        t = ' ' + title
+        _w(t + ' ' * max(0, _W - len(t)))
+        _rst()
+        _at(2, 1)
+        _fg(_MAG)
+        _box_h(_W)
+        _rst()
+
+    def _draw_tool_footer(self, row, hints):
+        """Draw footer line with key hints."""
+        _at(row, 1)
+        _fg(_MAG)
+        _box_h(_W)
+        _rst()
+        _at(row + 1, 3)
+        _style(dim=True)
+        _w(hints)
+        _rst()
+
+    # -- Tool: Memory info (M key) --
+
+    def _tool_memory(self):
+        gc.collect()
+        ram_free = gc.mem_free()
+        ram_used = gc.mem_alloc()
+        n_mods = len(sys.modules)
+
+        self._draw_tool_header('MEMORY & STORAGE')
+        r = 4
+        _at(r, 3); _style(fg=_CYN, bold=True); _w('RAM'); _rst()
+        r += 1
+        _at(r, 5); _w(f'Free: {ram_free // 1024} KB'); r += 1
+        _at(r, 5); _w(f'Used: {ram_used // 1024} KB'); r += 1
+
+        r += 1
+        try:
+            st = os.statvfs('/sd')
+            total = st[0] * st[2]
+            free = st[0] * st[3]
+            used = total - free
+            pct = used * 100 // total if total > 0 else 0
+            def _fmt(b):
+                if b >= 1024 * 1024 * 1024:
+                    return f'{b // (1024*1024*1024)}.{(b % (1024*1024*1024)) * 10 // (1024*1024*1024)} GB'
+                elif b >= 1024 * 1024:
+                    return f'{b // (1024*1024)}.{(b % (1024*1024)) * 100 // (1024*1024):02d} MB'
+                elif b >= 1024:
+                    return f'{b // 1024} KB'
+                return f'{b} B'
+            _at(r, 3); _style(fg=_CYN, bold=True); _w('SD CARD'); _rst(); r += 1
+            _at(r, 5); _w(f'Total: {_fmt(total)}'); r += 1
+            _at(r, 5); _w(f'Used:  {_fmt(used)}'); r += 1
+            _at(r, 5); _w(f'Free:  {_fmt(free)}'); r += 1
+            _at(r, 5); _w(f'Usage: {pct}%'); r += 1
+        except:
+            _at(r, 3); _style(dim=True); _w('SD card not available'); _rst(); r += 1
+
+        r += 1
+        _at(r, 3); _style(fg=_CYN, bold=True); _w('MODULES'); _rst()
+        r += 1
+        _at(r, 5); _w(f'Loaded: {n_mods}'); r += 1
+
+        self._draw_tool_footer(r + 1, 'Press any key to return...')
+        self._wait_key()
+        self._drain_keys()
+
+    # -- Tool: Flush modules (F key) --
+
+    def _tool_flush(self):
+        exclude = ("os", "sys", "gc")
+        flushed = []
+        for name in list(sys.modules):
+            if name not in exclude and not name.startswith("micropython"):
+                sys.modules.pop(name, None)
+                flushed.append(name)
+        gc.collect()
+        ram_free = gc.mem_free()
+
+        self._draw_tool_header('FLUSH MODULES')
+        r = 4
+        if flushed:
+            _at(r, 3); _w(f'Flushed {len(flushed)} modules:'); r += 1
+            # Show names in rows of ~40 chars
+            line = ''
+            for name in flushed:
+                if len(line) + len(name) + 2 > 44:
+                    r += 1
+                    _at(r, 5); _style(dim=True); _w(line); _rst()
+                    line = name
+                else:
+                    line = line + ', ' + name if line else name
+            if line:
+                r += 1
+                _at(r, 5); _style(dim=True); _w(line); _rst()
+        else:
+            _at(r, 3); _w('No modules to flush')
+
+        r += 2
+        _at(r, 3); _style(fg=_GRN); _w(f'gc.collect() -> {ram_free // 1024} KB free'); _rst()
+
+        self._draw_tool_footer(r + 2, 'Press any key to return...')
+        self._wait_key()
+        self._drain_keys()
+
+    # -- Tool: File browser (T key) --
+
+    def _tool_files(self):
+        sel = 0
+        scroll = 0
+        max_vis = _MAX_VIS - 2
+
+        while True:
+            # Get file list with sizes
+            scripts = find_py_files()
+            scripts.sort()
+            files = []
+            for s in scripts:
+                if '/archive/' in s or '/temp_archive/' in s:
+                    continue
+                path = f'/sd/{s}.py'
+                try:
+                    sz = os.stat(path)[6]
+                except:
+                    sz = 0
+                files.append((s, sz))
+
+            if not files:
+                self._draw_tool_header('FILE TOOLS')
+                _at(4, 3); _style(dim=True); _w('No scripts found'); _rst()
+                self._draw_tool_footer(6, 'Press any key to return...')
+                self._wait_key()
+                self._drain_keys()
+                return
+
+            if sel >= len(files):
+                sel = max(0, len(files) - 1)
+
+            # Draw
+            self._draw_tool_header('FILE TOOLS')
+            n = len(files)
+            _at(3, 3)
+            _style(fg=_CYN, bold=True); _w('SCRIPTS'); _rst()
+            _style(dim=True); _w(f'  ({n})'); _rst()
+
+            # Keep selection in view
+            if sel < scroll:
+                scroll = sel
+            elif sel >= scroll + max_vis:
+                scroll = sel - max_vis + 1
+
+            for i in range(min(max_vis, n - scroll)):
+                idx = scroll + i
+                row = 5 + i
+                name, sz = files[idx]
+                dname = name.replace('py_scripts/', '')
+                # Format size
+                if sz >= 1024:
+                    sz_str = f'{sz // 1024}.{(sz % 1024) * 10 // 1024}K'
+                else:
+                    sz_str = f'{sz}B'
+
+                _at(row, 1)
+                if idx == sel:
+                    _style(fg=_BLK, bg=_GRN, bold=True)
+                    _w(f' > {dname}')
+                    # Right-align size
+                    pad = _W - 4 - len(dname) - len(sz_str)
+                    if pad > 0:
+                        _w(' ' * pad)
+                    _w(sz_str + ' ')
+                    _rst()
+                else:
+                    _w('   ')
+                    _style(fg=_WHT); _w(dname); _rst()
+                    pad = _W - 3 - len(dname) - len(sz_str)
+                    if pad > 0:
+                        _w(' ' * pad)
+                    _style(dim=True); _w(sz_str); _rst()
+                _cll()
+
+            list_end = 5 + min(max_vis, n - scroll)
+            self._draw_tool_footer(list_end + 1,
+                'D:Delete  E:Edit  \x18\x19:Nav  ESC:Back')
+
+            # Input loop
+            key = self._wait_key()
+
+            # ESC or B = back
+            if key == b'\x1b\x1b' or (len(key) == 1 and key[0] == 0x1b):
+                self._drain_keys()
+                return
+            if len(key) == 1 and key[0] in (ord('b'), ord('B')):
+                self._drain_keys()
+                return
+
+            # Arrow up
+            if key == b'\x1b[A':
+                if sel > 0:
+                    sel -= 1
+
+            # Arrow down
+            elif key == b'\x1b[B':
+                if sel < len(files) - 1:
+                    sel += 1
+
+            # Delete
+            elif len(key) == 1 and key[0] in (ord('d'), ord('D')):
+                name, sz = files[sel]
+                dname = name.replace('py_scripts/', '')
+                if self._confirm(list_end + 3, f'Delete {dname}.py?'):
+                    try:
+                        os.remove(f'/sd/{name}.py')
+                        _at(list_end + 4, 3)
+                        _style(fg=_GRN); _w(f'Deleted {dname}.py'); _rst()
+                        utime.sleep_ms(800)
+                    except Exception as e:
+                        _at(list_end + 4, 3)
+                        _style(fg=_RED); _w(f'Error: {e}'); _rst()
+                        utime.sleep_ms(1500)
+
+            # Edit
+            elif len(key) == 1 and key[0] in (ord('e'), ord('E')):
+                name, _ = files[sel]
+                _cursor(True)
+                _clr()
+                try:
+                    picocalc.edit(f'/sd/{name}.py')
+                except Exception as e:
+                    _at(2, 3); _style(fg=_RED); _w(f'Edit error: {e}'); _rst()
+                    utime.sleep_ms(1500)
+                self._drain_keys()
 
     def run(self):
         self.refresh_scripts()
@@ -423,7 +563,7 @@ class _Menu:
 
             redraw = False
 
-            # ── ESC: Exit (robust: double or single ESC) ──
+            # -- ESC: Exit (robust: double or single ESC) --
             if key == b'\x1b\x1b' or (len(key) == 1 and key[0] == 0x1b):
                 _cursor(True)
                 _clr()
@@ -432,33 +572,33 @@ class _Menu:
                 _rst()
                 return
 
-            # ── Arrow Up ──
+            # -- Arrow Up --
             elif key == b'\x1b[A':
                 if self.sel > 0:
                     self.sel -= 1
                     redraw = True
 
-            # ── Arrow Down ──
+            # -- Arrow Down --
             elif key == b'\x1b[B':
                 if self.sel < len(self.scripts) - 1:
                     self.sel += 1
                     redraw = True
 
-            # ── Home ──
+            # -- Home --
             elif key == b'\x1b[H':
                 if self.sel != 0:
                     self.sel = 0
                     self.scroll = 0
                     redraw = True
 
-            # ── End ──
+            # -- End --
             elif key == b'\x1b[F':
                 last = len(self.scripts) - 1
                 if self.sel != last and last >= 0:
                     self.sel = last
                     redraw = True
 
-            # ── Enter: Run script ──
+            # -- Enter: Run script --
             elif key in (b'\r\n', b'\r', b'\n'):
                 if self.scripts:
                     self._enter_text_mode()
@@ -479,7 +619,7 @@ class _Menu:
                     self.refresh_scripts()
                     redraw = True
 
-            # ── Single-key commands ──
+            # -- Single-key commands --
             elif len(key) == 1:
                 ch = key[0]
 
@@ -488,23 +628,15 @@ class _Menu:
                     redraw = True
 
                 elif ch == ord('f') or ch == ord('F'):
-                    self._enter_text_mode()
-                    flush_modules()
-                    input("\nPress Enter...")
-                    self._drain_keys()
+                    self._tool_flush()
                     redraw = True
 
                 elif ch == ord('m') or ch == ord('M'):
-                    self._enter_text_mode()
-                    show_memory()
-                    input("\nPress Enter...")
-                    self._drain_keys()
+                    self._tool_memory()
                     redraw = True
 
                 elif ch == ord('t') or ch == ord('T'):
-                    self._enter_text_mode()
-                    file_management_menu()
-                    self._drain_keys()
+                    self._tool_files()
                     self.refresh_scripts()
                     redraw = True
 

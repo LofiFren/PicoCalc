@@ -5,7 +5,8 @@ A MicroPython firmware and script collection for the Clockwork Pi PicoCalc handh
 - 320x320 LCD display with flicker-free rendering
 - Membrane keyboard with VT100 terminal
 - Arrow-key navigable menu system
-- Games (Tetris, Snake), Synthesizer, BLE Scanner, WiFi Manager, LLM client
+- Games (Tetris, Snake), 4-instrument Synthesizer, BLE Keyboard, WiFi Manager, LLM client
+- Development dashboard with file manager, editor, diff, REPL, eject
 - SD card script auto-discovery
 
 ---
@@ -26,21 +27,41 @@ A MicroPython firmware and script collection for the Clockwork Pi PicoCalc handh
 
 #### Option A: Dashboard (Recommended)
 
-The easiest way — a local web UI that handles everything:
+The easiest way -- a local web UI that handles everything:
 
 ```bash
 python3 MicroPython/tools/dashboard.py
 ```
 
 This opens a browser dashboard where you can:
-- **Deploy All** — pushes boot files, modules, and scripts in one click
+- **Deploy All** -- pushes boot files, modules, and scripts in one click
 - **Browse** device files, view diffs, push individual files
 - **Drag-and-drop** `.py` files to upload
-- **REPL** — run Python on the device from the browser
+- **Side-by-side diff** -- click a modified file to see device vs local changes color-coded
+- **New script** -- create scripts from a starter template with one click
+- **REPL** -- run Python on the device from the browser (30s timeout per command)
+- **Eject** -- safely disconnect with on-device countdown, then unplug USB
+- **REST API** -- all features accessible via HTTP for AI-assisted development
 
 > First run will prompt to install `mpremote` if needed. Requires Python 3.7+.
 >
 > **Adding new files:** Scripts in `modules/` and `sd/py_scripts/` are auto-discovered by the dashboard. Root-level files (like `boot.py`) must be added to `FILE_MAP` in `dashboard.py` to appear.
+
+#### Dashboard REST API
+
+The dashboard exposes a REST API that AI coding tools (Claude Code, Cursor, etc.) can use to interact with the PicoCalc directly -- write code, push it, test on device, all from the AI session:
+
+```bash
+curl -s http://localhost:8265/api/device                          # Device status
+curl -s -X POST http://localhost:8265/api/exec -H 'Content-Type: application/json' \
+  -d '{"code": "print(1+1)"}'                                     # Run Python on device
+curl -s -X POST http://localhost:8265/api/push -H 'Content-Type: application/json' \
+  -d '{"file": "sd/py_scripts/my_app.py"}'                        # Push file to device
+curl -s "http://localhost:8265/api/diff?file=sd/py_scripts/synth.py"  # Diff local vs device
+curl -s -X POST http://localhost:8265/api/eject                   # Safe disconnect
+```
+
+All endpoints: `/api/device`, `/api/exec`, `/api/push`, `/api/pull`, `/api/files`, `/api/diff`, `/api/local/tree`, `/api/eject`, `/api/reset`, `/api/cleanup`
 
 #### Option B: Manual
 
@@ -64,7 +85,6 @@ tools/             <-- Dashboard web UI (runs on your computer)
 picocalcdisplay/   <-- C source, compiled into firmware
 vtterminal/        <-- C source, compiled into firmware
 firmware/          <-- UF2 images and Dockerfile
-Client_Code/       <-- Desktop BLE client
 ```
 
 ### 3. Prepare the SD Card
@@ -74,7 +94,7 @@ Client_Code/       <-- Desktop BLE client
 3. Copy all `.py` files from `MicroPython/sd/py_scripts/` into that folder.
 4. Insert the SD card into the PicoCalc.
 
-> Or use the Dashboard — click **Deploy Scripts** to push all scripts to the SD card over USB.
+> Or use the Dashboard -- click **Deploy Scripts** to push all scripts to the SD card over USB.
 
 ### 4. Boot
 
@@ -86,59 +106,58 @@ Power cycle the PicoCalc. The boot splash shows initialization progress, then th
 
 ```
 MicroPython/
-├── boot.py                  --> Copy to device /
-├── main.py                  --> Copy to device / (launches menu)
-├── boot_thonny.py           --> Deploy as /boot.py for Thonny users
-├── boot_dev.py              --> Deploy as /boot.py for dev mode (REPL only)
-├── cleanup.py               --> (Optional) one-time cleanup, or use dashboard Cleanup button
-├── modules/                 --> Copy to device /modules/
-│   ├── picocalc.py              Hardware abstraction (display + keyboard)
-│   ├── vt.py                    VT100 terminal emulator
-│   ├── py_run.py                Menu system with arrow-key navigation
-│   ├── enhanced_sd.py           SD card initialization
-│   ├── picocalc_system.py       System utilities
-│   ├── sdcard.py                SD card driver
-│   ├── checksd.py               SD card verification
-│   ├── pye.py                   Built-in text editor
-│   ├── colorer.py               Terminal color support
-│   ├── default_style.py         Syntax highlighting styles
-│   ├── highlighter.py           Code syntax highlighting
-│   ├── flush.py                 Module cache flushing
-│   └── mkdir.py                 Directory creation utility
-├── sd/py_scripts/           --> Copy contents to SD card /py_scripts/
-│   ├── tetris.py                Tetris with sound effects
-│   ├── snake.py                 Snake with high scores
-│   ├── synth.py                 Multi-waveform synthesizer
-│   ├── ProxiScan.py             BLE proximity scanner & fox hunt tool
-│   ├── WiFiManager.py           WiFi scanning & connection manager
-│   ├── PicoBLE.py               BLE GATT server & file transfer
-│   ├── picocalc_ollama.py       Local LLM client (Ollama)
-│   ├── brad.py                  WiFi utility library
-│   ├── demo.py                  Visual display showcase (grayscale, animation)
-│   └── editor.py                On-device file browser + code editor
-├── firmware/                    Prebuilt UF2 firmware images
-│   ├── picocalc_micropython_pico2w.uf2
-│   └── Dockerfile               Build environment for firmware
-├── micropython.cmake            Top-level build config for C modules
-├── picocalcdisplay/             C display driver (compiled into firmware)
-│   ├── picocalcdisplay.c
-│   ├── picocalcdisplay.h
-│   ├── font6x8e500.h
-│   └── micropython.cmake
-├── vtterminal/                  C terminal emulator (compiled into firmware)
-│   ├── vtterminal.c
-│   ├── vtterminal.h
-│   ├── font6x8.h
-│   └── micropython.cmake
-├── tools/                       Development dashboard
-│   ├── dashboard.py                 Web UI server (run this!)
-│   ├── bottle.py                    Vendored web framework (zero install)
-│   └── static/
-│       ├── index.html               Dashboard frontend
-│       └── vendor/                  CodeMirror editor (vendored, offline)
-└── Client_Code/                 Desktop BLE client (runs on PC, not device)
-    ├── PicoCalc_Client_BLE.py
-    └── picocalc_client_config.json
+|-- boot.py                  --> Copy to device /
+|-- main.py                  --> Copy to device / (launches menu)
+|-- boot_thonny.py           --> Deploy as /boot.py for Thonny users
+|-- boot_dev.py              --> Deploy as /boot.py for dev mode (REPL only)
+|-- cleanup.py               --> (Optional) one-time cleanup, or use dashboard Cleanup button
+|-- modules/                 --> Copy to device /modules/
+|   |-- picocalc.py              Hardware abstraction (display + keyboard)
+|   |-- vt.py                    VT100 terminal emulator
+|   |-- py_run.py                Menu system with arrow-key navigation
+|   |-- enhanced_sd.py           SD card initialization
+|   |-- picocalc_system.py       System utilities
+|   |-- sdcard.py                SD card driver
+|   |-- checksd.py               SD card verification
+|   |-- pye.py                   Built-in text editor
+|   |-- colorer.py               Terminal color support
+|   |-- default_style.py         Syntax highlighting styles
+|   |-- highlighter.py           Code syntax highlighting
+|   |-- flush.py                 Module cache flushing
+|   \-- mkdir.py                 Directory creation utility
+|-- sd/py_scripts/           --> Copy contents to SD card /py_scripts/
+|   |-- tetris.py                Tetris with sound effects
+|   |-- snake.py                 Snake with high scores
+|   |-- synth.py                 4-instrument synthesizer with piano keyboard
+|   |-- ProxiScan.py             BLE proximity scanner & fox hunt tool
+|   |-- WiFiManager.py           WiFi scanning & connection manager
+|   |-- picocalc_ollama.py       Local LLM client (Ollama)
+|   |-- brad.py                  WiFi utility library
+|   |-- demo.py                  Visual display showcase (grayscale, animation)
+|   \-- editor.py                On-device file browser + code editor
+|-- firmware/                    Prebuilt UF2 firmware images
+|   |-- picocalc_micropython_pico2w.uf2   (v1.25.0, stable)
+|   |-- picocalc_v127_pico2w.uf2          (v1.27.0, patched)
+|   |-- Dockerfile                         Build for v1.25.0
+|   |-- Dockerfile.v127                    Build for v1.27.0 + USB fix
+|   \-- USB_REGRESSION_FIX.md              RP2350 USB bug report
+|-- micropython.cmake            Top-level build config for C modules
+|-- picocalcdisplay/             C display driver (compiled into firmware)
+|   |-- picocalcdisplay.c
+|   |-- picocalcdisplay.h
+|   |-- font6x8e500.h
+|   \-- micropython.cmake
+|-- vtterminal/                  C terminal emulator (compiled into firmware)
+|   |-- vtterminal.c
+|   |-- vtterminal.h
+|   |-- font6x8.h
+|   \-- micropython.cmake
+|-- tools/                       Development dashboard
+|   |-- dashboard.py                 Web UI server (run this!)
+|   |-- bottle.py                    Vendored web framework (zero install)
+|   \-- static/
+|       |-- index.html               Dashboard frontend
+|       \-- vendor/                  CodeMirror editor (vendored, offline)
 ```
 
 ---
@@ -149,13 +168,12 @@ MicroPython/
 |-----|-------------|
 | **Tetris** | Classic Tetris with 7 pieces, ghost piece, sound effects, level progression |
 | **Snake** | Snake with high score tracking, speed levels, sound |
-| **Synth** | Multi-waveform synthesizer with headphone/speaker output |
+| **[Synth](SYNTH.md)** | 4-instrument synthesizer (Piano, Organ, Strings, Synth) with QWERTY piano keyboard, ADSR envelope, arpeggiator, 16-step sequencer, LFO effects, presets |
 | **ProxiScan** | BLE proximity scanner, fox hunt tool with compass, signal tracking, competition timer, waypoints, antenna calibration |
 | **WiFiManager** | WiFi scanner with VT100 UI, signal bars, channel analysis, signal monitor |
-| **PicoBLE** | BLE GATT server with Nordic UART Service, file transfer |
 | **Ollama Client** | Chat with local LLMs over WiFi via Ollama |
 | **Demo** | Visual display showcase: grayscale palette, bouncing boxes, scrolling gradient, device info |
-| **Editor** | On-device file browser and code editor — browse, create, edit, delete scripts without a computer |
+| **Editor** | On-device file browser and code editor -- browse, create, edit, delete scripts without a computer |
 
 ---
 
@@ -177,13 +195,19 @@ The main menu uses arrow-key navigation:
 
 ## Building Firmware from Source
 
-The prebuilt UF2 in `firmware/` is ready to flash. To build from source:
+The prebuilt UF2 files in `firmware/` are ready to flash -- **building from source is not required**. Only do this if you want to modify the C display/terminal drivers or experiment with different MicroPython versions.
+
+Requires: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+### Option A: Standard Build (v1.25.0 -- recommended)
+
+Stable, known-good USB. Used by the prebuilt `picocalc_micropython_pico2w.uf2`.
 
 ```bash
-# Build Docker image (one-time setup)
+# 1. Build the Docker image (one-time, ~5 min)
 docker build -t picocalc-build MicroPython/firmware/
 
-# Compile firmware with custom C modules
+# 2. Compile firmware with PicoCalc C modules (~3 min)
 docker run --rm \
   -v $(pwd)/MicroPython:/picocalc \
   -v $(pwd)/MicroPython/firmware:/out \
@@ -192,7 +216,32 @@ docker run --rm \
            cp build-RPI_PICO2_W/firmware.uf2 /out/picocalc_micropython_pico2w.uf2"
 ```
 
-Requires: Docker Desktop. The Dockerfile pins MicroPython to a known-good version for USB stability.
+### Option B: Patched v1.27.0 Build
+
+Newer MicroPython with BLE pairing APIs enabled. Includes a two-line patch for the RP2350 USB regression (see `firmware/USB_REGRESSION_FIX.md`).
+
+```bash
+# 1. Build the Docker image (one-time, ~5 min)
+docker build -t picocalc-v127 -f MicroPython/firmware/Dockerfile.v127 MicroPython/firmware/
+
+# 2. Compile firmware (~3 min)
+docker run --rm \
+  -v $(pwd)/MicroPython:/picocalc \
+  -v $(pwd)/MicroPython/firmware:/out \
+  picocalc-v127 \
+  bash -c "make BOARD=RPI_PICO2_W USER_C_MODULES=/picocalc/micropython.cmake -j\$(nproc) && \
+           cp build-RPI_PICO2_W/firmware.uf2 /out/picocalc_v127_pico2w.uf2"
+```
+
+### Firmware Files
+
+| File | MicroPython | Notes |
+|------|-------------|-------|
+| `picocalc_micropython_pico2w.uf2` | v1.25.0-preview | Stable default, all apps work |
+| `picocalc_v127_pico2w.uf2` | v1.27.0 (patched) | BLE pairing APIs, USB fix applied |
+| `Dockerfile` | v1.25.0-preview | Standard build |
+| `Dockerfile.v127` | v1.27.0 + patches | USB fix + BLE security enabled |
+| `USB_REGRESSION_FIX.md` | -- | Bug analysis and patch details |
 
 ---
 
@@ -212,7 +261,7 @@ Requires: Docker Desktop. The Dockerfile pins MicroPython to a known-good versio
 ## Troubleshooting
 
 **"no module named 'picocalc'"** after flashing new firmware:
-- The C source directories (`picocalcdisplay/`, `vtterminal/`) may be on the device filesystem, shadowing the C modules compiled into firmware. Delete them from the device — they should only exist in the repo, not on the Pico.
+- The C source directories (`picocalcdisplay/`, `vtterminal/`) may be on the device filesystem, shadowing the C modules compiled into firmware. Delete them from the device -- they should only exist in the repo, not on the Pico.
 - Ensure `/modules/` directory with `picocalc.py` is on the device.
 
 **Boot doesn't auto-run:**
@@ -228,31 +277,44 @@ Requires: Docker Desktop. The Dockerfile pins MicroPython to a known-good versio
 
 **USB REPL not connecting (no serial port appears):**
 - Firmware must be built with `BOARD=RPI_PICO2_W`. Default `RPI_PICO` is the wrong chip.
-- MicroPython must be pinned to v1.25.0-preview. Later versions (v1.28+) have a USB regression on RP2350.
+- MicroPython v1.26.0, v1.27.0, and v1.28.0+ all have a USB regression on RP2350 ([#18990](https://github.com/micropython/micropython/issues/18990)). Use either the v1.25.0-preview firmware or the patched v1.27.0 (`picocalc_v127_pico2w.uf2`).
 - Check with `ls /dev/tty.usbmodem*` (macOS) or `ls /dev/ttyACM*` (Linux).
 
 **Thonny shows `KeyboardInterrupt` traceback on connect:**
 - This is normal! Thonny sends Ctrl+C to interrupt `main.py`'s menu loop. You'll see a traceback followed by `>>>`. This means Thonny connected successfully.
 
 **Thonny shows "Unexpected read during raw paste":**
-- Deploy `boot_thonny.py` as `/boot.py` on the device (meaning rename boot_thonny.py as boot.py). This skips `os.dupterm()` which conflicts with Thonny's raw paste protocol. The PicoCalc screen and keyboard still work for apps and the menu — only REPL output moves to Thonny's shell panel instead of the device screen.
+- Deploy `boot_thonny.py` as `/boot.py` on the device (meaning rename boot_thonny.py as boot.py). This skips `os.dupterm()` which conflicts with Thonny's raw paste protocol. The PicoCalc screen and keyboard still work for apps and the menu -- only REPL output moves to Thonny's shell panel instead of the device screen.
 - To switch back to standard boot: deploy `boot.py` as `/boot.py`.
 - The dashboard and mpremote work with the standard `boot.py` and don't need the Thonny variant.
 
 ---
 
+## What's New in v3.0
+
+- **[Synth 4.0](SYNTH.md)** -- ground-up rewrite with 4 instruments (Piano, Organ, Strings, Synth), QWERTY piano keyboard, ADSR envelope, arpeggiator, 16-step sequencer, LFO, presets, stereo harmonic enrichment
+- **Dashboard eject button** -- sends 7-second countdown to device screen, then reboots to menu for safe USB unplug
+- **Dashboard side-by-side diff** -- click a modified file to see device vs local changes color-coded in a split view
+- **Dashboard new script** -- "+" button creates scripts from a starter template, opens in editor
+- **Smart file clicks** -- modified files auto-show diff, clean files open in editor
+- **Adaptive polling** -- 1.5s when disconnected for fast reconnection, 5s when connected
+- **Firmware v1.27.0 option** -- patched build with USB fix and BLE pairing APIs (see `firmware/Dockerfile.v127`)
+- **USB regression fix** -- discovered and patched MicroPython RP2350 USB-CDC bug affecting v1.26.0+ ([#18990](https://github.com/micropython/micropython/issues/18990))
+- **Audio quality** -- anti-click retrigger, soft duty ceiling, per-instrument stereo overtones, frequency-scaled decay
+- **Removed PicoBLE** -- old BLE file transfer removed (dashboard handles file transfer over USB)
+
 ## What's New in v2.0
 
-- **Development Dashboard** — local web UI (`python3 MicroPython/tools/dashboard.py`) with FTP-style dual-pane file manager, in-browser editor, REPL, drag-and-drop deploy, file diff, and macOS junk cleanup
-- **Flicker-free display** — `beginDraw()` blocks Core 1 during screen clear to prevent white flash artifacts
-- **Firmware build pipeline** — Dockerfile pinned to known-good MicroPython v1.25.0 for USB stability on RP2350
-- **Boot/main split** — USB REPL available immediately after boot; Thonny and mpremote can connect without issues
-- **WiFiManager rewrite** — full VT100 terminal UI with arrow-key navigation, color-coded signal bars, channel congestion analysis, real-time signal monitor
-- **On-device code editor** — browse, create, edit, and delete scripts directly on the PicoCalc, no computer needed
-- **Demo app** — visual display showcase with grayscale palette, animated boxes, scrolling gradient
-- **Thonny support** — `boot_thonny.py` variant for Thonny users (skips dupterm)
-- **Dashboard code editor** — Python syntax highlighting and PicoCalc-aware linting (vendored CodeMirror, works offline)
-- **Codebase cleanup** — consolidated ProxiScan variants, removed legacy scripts and archive directory
+- **Development Dashboard** -- local web UI (`python3 MicroPython/tools/dashboard.py`) with FTP-style dual-pane file manager, in-browser editor, REPL, drag-and-drop deploy, file diff, and macOS junk cleanup
+- **Flicker-free display** -- `beginDraw()` blocks Core 1 during screen clear to prevent white flash artifacts
+- **Firmware build pipeline** -- Dockerfile pinned to known-good MicroPython v1.25.0 for USB stability on RP2350
+- **Boot/main split** -- USB REPL available immediately after boot; Thonny and mpremote can connect without issues
+- **WiFiManager rewrite** -- full VT100 terminal UI with arrow-key navigation, color-coded signal bars, channel congestion analysis, real-time signal monitor
+- **On-device code editor** -- browse, create, edit, and delete scripts directly on the PicoCalc, no computer needed
+- **Demo app** -- visual display showcase with grayscale palette, animated boxes, scrolling gradient
+- **Thonny support** -- `boot_thonny.py` variant for Thonny users (skips dupterm)
+- **Dashboard code editor** -- Python syntax highlighting and PicoCalc-aware linting (vendored CodeMirror, works offline)
+- **Codebase cleanup** -- consolidated ProxiScan variants, removed legacy scripts and archive directory
 
 ---
 

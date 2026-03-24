@@ -112,7 +112,7 @@ class SnakeSound:
 class SnakeGame:
     def __init__(self):
         self.display = picocalc.display
-        # Note: do NOT use stopRefresh() — it kills Core 1 and causes DMA issues
+        # Note: do NOT use stopRefresh() -- it kills Core 1 and causes DMA issues
         self.width, self.height = self.display.width, self.display.height
 
         # Clear entire screen first to remove any menu remnants

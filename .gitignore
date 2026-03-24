@@ -1,26 +1,13 @@
-MicroPython/sd/py_scripts/idle.patch
-MicroPython/Client_Code/picocalc_client_config.json
-MicroPython/sd/.DS_Store
-MicroPython/.DS_Store
+# macOS
 .DS_Store
-MicroPython/sd/temp_archive/
-MicroPython/sd/py_scripts/temp_archive/cherry_synth_v1.py
-MicroPython/sd/py_scripts/temp_archive/cherry_synth.py
-MicroPython/sd/py_scripts/temp_archive/sakura_synth_gridtech_lfo_noflicker.py
-MicroPython/sd/py_scripts/temp_archive/sakura_synth_gridtech_lfo.py
-MicroPython/sd/py_scripts/temp_archive/sakura_synth_wavetable_lfo.py
-MicroPython/sd/py_scripts/temp_archive/sakura_synth.py
-MicroPython/boot_dev.py
-MicroPython/pico_sdk_import.cmake
-MicroPython/sd/py_scripts/temp_archive/sakura_synth_soft_filter_engine.py
-MicroPython/sd/py_scripts/temp_archive/picocalc_ollama_3.py
-MicroPython/sd/py_scripts/picocalc_client_config.json
-MicroPython/sd/py_scripts/long_fil.txt
-MicroPython/Client_Code/super_long_file.txt
-youtube_script_pico.md
-MicroPython/sd/py_scripts/bitchat/plan.md
-boomerang_catch_game_prd.md
-rough_plan.md
-# Claude Code local settings (never commit)
+
+# Claude Code local settings
 .claude/
 **/.claude/
+
+# Build artifacts
+MicroPython/pico_sdk_import.cmake
+
+# Temp/scratch files
+MicroPython/sd/py_scripts/test.py
+MicroPython/sd/py_scripts/picocalc_client_config.json

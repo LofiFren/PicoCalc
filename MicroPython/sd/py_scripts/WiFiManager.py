@@ -13,7 +13,7 @@ import utime
 import gc
 import json
 
-# ── VT100 helpers (same pattern as py_run.py) ─────────────────────
+# -- VT100 helpers (same pattern as py_run.py) ---------------------
 _E = '\033'
 _BLK, _RED, _GRN, _YEL, _BLU, _MAG, _CYN, _WHT = range(8)
 _W = 53
@@ -72,7 +72,7 @@ def _sec_str(auth):
     return {0: 'Open', 1: 'WEP', 2: 'WPA', 3: 'WPA2', 4: 'WPA/2', 5: 'WPA3'}.get(auth, '?')
 
 
-# ── WiFi helpers ──────────────────────────────────────────────────
+# -- WiFi helpers --------------------------------------------------
 
 def _load_creds():
     try:
@@ -118,7 +118,7 @@ def _connect(wlan, ssid, password):
     return False
 
 
-# ── Shared UI components ──────────────────────────────────────────
+# -- Shared UI components ------------------------------------------
 
 class _UI:
     """Shared drawing methods for all screens."""
@@ -248,7 +248,7 @@ class _UI:
                 col += 1
 
 
-# ── Main Menu ─────────────────────────────────────────────────────
+# -- Main Menu -----------------------------------------------------
 
 _MENU_ITEMS = [
     ('Scan & Connect', 'scan'),
@@ -369,7 +369,7 @@ class WiFiManager:
             self.wlan.disconnect()
 
 
-# ── Scan & Connect Screen ────────────────────────────────────────
+# -- Scan & Connect Screen ----------------------------------------
 
 class ScanScreen:
     MAX_VIS = 26
@@ -528,7 +528,7 @@ class ScanScreen:
         self.ui.wait_key()
 
 
-# ── Signal Monitor ────────────────────────────────────────────────
+# -- Signal Monitor ------------------------------------------------
 
 class SignalMonitor:
     GRAPH_W = 45
@@ -629,7 +629,7 @@ class SignalMonitor:
             self.ui.wait_key()
 
 
-# ── Channel Analysis ──────────────────────────────────────────────
+# -- Channel Analysis ----------------------------------------------
 
 class ChannelAnalysis:
     def __init__(self, ui, wlan):
@@ -731,7 +731,7 @@ class ChannelAnalysis:
                 return
 
 
-# ── Network Analysis ──────────────────────────────────────────────
+# -- Network Analysis ----------------------------------------------
 
 class NetworkAnalysis:
     def __init__(self, ui, wlan):
@@ -833,7 +833,7 @@ class NetworkAnalysis:
                 return
 
 
-# ── Entry point ───────────────────────────────────────────────────
+# -- Entry point ---------------------------------------------------
 
 def main():
     gc.collect()

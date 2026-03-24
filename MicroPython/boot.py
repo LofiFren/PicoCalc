@@ -9,7 +9,7 @@ from picocalc import PicoDisplay, PicoKeyboard
 import os
 import gc
 
-# ── Splash screen helpers (direct framebuffer, before terminal) ──
+# -- Splash screen helpers (direct framebuffer, before terminal) --
 
 _C_BLK = 0
 _C_DK = 3
@@ -40,10 +40,10 @@ def _splash_step(d, row, label, status, color=_C_LT):
     d.text(status, 214, y, color)
     d.show()
 
-# ── Boot sequence ────────────────────────────────────────────────
+# -- Boot sequence ------------------------------------------------
 
 try:
-    # 1. Display (first — gives us visual feedback)
+    # 1. Display (first -- gives us visual feedback)
     pc_display = PicoDisplay(320, 320)
     _splash_init(pc_display)
     _splash_step(pc_display, 0, "Display", "OK", _C_WHT)
@@ -64,7 +64,7 @@ try:
     _splash_step(pc_display, 2, "SD Card", "...", _C_GR)
 
     import utime
-    utime.sleep_ms(500)  # Reduced from 900ms — cold-start stabilization
+    utime.sleep_ms(500)  # Reduced from 900ms -- cold-start stabilization
 
     from enhanced_sd import initsd
     sd = initsd(debug=False)
@@ -109,12 +109,12 @@ try:
     # dupterm sends REPL output to the PicoCalc screen AND allows the
     # PicoCalc keyboard to type at the >>> prompt.
     # NOTE: Thonny may show "Unexpected read during raw paste" on first
-    # connect — press Stop/Restart in Thonny to resolve. This is a known
+    # connect -- press Stop/Restart in Thonny to resolve. This is a known
     # Thonny limitation with dupterm devices; mpremote and the dashboard
     # are unaffected.
     os.dupterm(pc_terminal)
 
-    # 10. Done — show ready
+    # 10. Done -- show ready
     _splash_step(pc_display, 5, "Ready!", "", _C_WHT)
     utime.sleep_ms(400)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PicoCalc Development Dashboard — local web UI for device management.
+"""PicoCalc Development Dashboard -- local web UI for device management.
 
 Usage:
     python3 dashboard.py              Launch dashboard (opens browser)
@@ -50,7 +50,7 @@ ensure_mpremote()
 sys.path.insert(0, os.path.dirname(__file__))
 from bottle import Bottle, request, response, static_file, abort
 
-# ── Configuration ─────────────────────────────────────────────────
+# --- Configuration ---
 
 PORT = 8265
 HOST = "127.0.0.1"
@@ -70,14 +70,14 @@ def find_project_root():
 
 MP_DIR = find_project_root()
 
-# ── File mapping ──────────────────────────────────────────────────
+# --- File mapping ---
 #
 # ROOT FILES: Files in the MicroPython/ root must be listed here
 # explicitly so the dashboard knows where to put them on the device.
 # Add new root-level .py files here as "filename.py": "/filename.py".
 #
 # MODULES & SCRIPTS: Files in modules/ and sd/py_scripts/ are
-# auto-discovered by glob — no need to add them here.
+# auto-discovered by glob -- no need to add them here.
 #
 FILE_MAP = {
     "boot.py": "/boot.py",
@@ -86,7 +86,7 @@ FILE_MAP = {
     "boot_dev.py": "/boot_dev.py",
 }
 
-# ── Device Manager ────────────────────────────────────────────────
+# --- Device Manager ---
 
 class DeviceManager:
     """Thread-safe wrapper around mpremote subprocess calls."""
@@ -349,6 +349,62 @@ else:
             rc, out, err = self._run("soft-reset", timeout=10)
             return rc == 0
 
+    def eject(self):
+        """Show a 7-second countdown on the PicoCalc screen, then hard
+        reset.  The exec blocks for ~7s while the countdown runs on the
+        device display, so use a generous timeout."""
+        code = """\
+import machine, utime
+# Brief delay lets display settle after Ctrl-C interrupts the menu
+utime.sleep_ms(200)
+has_display = False
+try:
+    import picocalc
+    d = picocalc.display
+    if d:
+        d.recoverRefresh()
+        utime.sleep_ms(100)
+        has_display = True
+except:
+    pass
+
+for i in range(7, 0, -1):
+    if has_display:
+        try:
+            d.beginDraw()
+            d.fill(0)
+            d.text('UNPLUG USB CABLE', 76, 50, 15)
+            bw, bh = 60, 50
+            bx, by = 130, 100
+            d.fill_rect(bx, by, bw, bh, 12)
+            d.rect(bx, by, bw, bh, 15)
+            d.text(str(i), bx + 27, by + 21, 0)
+            d.text('seconds until reboot', 60, 170, 6)
+            bar_x, bar_w = 40, 240
+            d.rect(bar_x, 200, bar_w, 10, 6)
+            fill = bar_w * (7 - i) // 7
+            if fill > 0:
+                d.fill_rect(bar_x + 1, 201, fill, 8, 12)
+            d.show()
+        except:
+            has_display = False
+    utime.sleep_ms(1000)
+
+if has_display:
+    try:
+        d.beginDraw()
+        d.fill(0)
+        d.text('Rebooting...', 112, 156, 15)
+        d.show()
+    except:
+        pass
+print('EJECT_OK')
+machine.reset()
+"""
+        with self.lock:
+            rc, out, err = self._run("exec", code, timeout=12)
+            return "EJECT_OK" in out
+
     def deploy_boot(self):
         """Deploy boot.py and main.py to device root."""
         results = []
@@ -388,7 +444,7 @@ else:
         return results
 
     def diff_file(self, local_rel_path):
-        """Compare local file vs device file. Returns unified diff string."""
+        """Compare local file vs device file. Returns side-by-side diff data."""
         local_path = MP_DIR / local_rel_path
 
         # Determine device path
@@ -404,21 +460,44 @@ else:
         if not local_path.exists():
             return None, "Local file not found"
 
-        local_content = local_path.read_text().splitlines(keepends=True)
+        local_content = local_path.read_text()
         device_content = self.read_file(remote)
         if device_content is None:
             return None, f"Device file not found: {remote}"
 
-        device_lines = device_content.splitlines(keepends=True)
-        diff = difflib.unified_diff(
-            device_lines, local_content,
-            fromfile=f"device:{remote}",
-            tofile=f"local:{local_rel_path}",
-        )
-        return "".join(diff), None
+        local_lines = local_content.splitlines()
+        device_lines = device_content.splitlines()
+
+        # Build side-by-side diff using SequenceMatcher
+        sm = difflib.SequenceMatcher(None, device_lines, local_lines)
+        rows = []
+        for tag, i1, i2, j1, j2 in sm.get_opcodes():
+            if tag == 'equal':
+                for i, j in zip(range(i1, i2), range(j1, j2)):
+                    rows.append({'t': 'eq', 'ln_l': i+1, 'l': device_lines[i],
+                                 'ln_r': j+1, 'r': local_lines[j]})
+            elif tag == 'replace':
+                max_len = max(i2 - i1, j2 - j1)
+                for k in range(max_len):
+                    left = device_lines[i1+k] if i1+k < i2 else None
+                    right = local_lines[j1+k] if j1+k < j2 else None
+                    rows.append({'t': 'chg',
+                                 'ln_l': i1+k+1 if left is not None else None,
+                                 'l': left,
+                                 'ln_r': j1+k+1 if right is not None else None,
+                                 'r': right})
+            elif tag == 'delete':
+                for i in range(i1, i2):
+                    rows.append({'t': 'del', 'ln_l': i+1, 'l': device_lines[i],
+                                 'ln_r': None, 'r': None})
+            elif tag == 'insert':
+                for j in range(j1, j2):
+                    rows.append({'t': 'ins', 'ln_l': None, 'l': None,
+                                 'ln_r': j+1, 'r': local_lines[j]})
+        return {'rows': rows, 'device': remote, 'local': local_rel_path}, None
 
 
-# ── Web App ───────────────────────────────────────────────────────
+# --- Web App ---
 
 app = Bottle()
 dm = DeviceManager()
@@ -430,7 +509,7 @@ def json_response(data, status=200):
     return json.dumps(data)
 
 
-# ── Static files ──────────────────────────────────────────────────
+# --- Static files ---
 
 @app.route("/")
 def index():
@@ -442,7 +521,7 @@ def serve_static(filepath):
     return static_file(filepath, root=str(Path(__file__).parent / "static"))
 
 
-# ── API: Device ───────────────────────────────────────────────────
+# --- API: Device ---
 
 @app.route("/api/device")
 def api_device():
@@ -459,7 +538,7 @@ def api_device():
         return json_response({"connected": False, "error": str(e)})
 
 
-# ── API: Files ────────────────────────────────────────────────────
+# --- API: Files ---
 
 @app.route("/api/files")
 def api_files():
@@ -511,7 +590,7 @@ def api_dir_delete():
     return json_response({"ok": ok, "path": path})
 
 
-# ── API: Local file reading ──────────────────────────────────────
+# --- API: Local file reading ---
 
 @app.route("/api/local/file")
 def api_local_file():
@@ -578,7 +657,7 @@ def api_pull():
         return json_response({"ok": False, "error": str(e)}, 500)
 
 
-# ── API: Lint ─────────────────────────────────────────────────────
+# --- API: Lint ---
 
 @app.route("/api/lint", method="POST")
 def api_lint():
@@ -601,7 +680,7 @@ def api_lint():
             "message": f"SyntaxError: {e.msg}",
             "severity": "error",
         })
-        # Return early on syntax error — other checks won't work
+        # Return early on syntax error -- other checks won't work
         return json_response({"issues": issues})
 
     # 2. PicoCalc-specific checks (line by line)
@@ -629,12 +708,12 @@ def api_lint():
         rgb_match = re.search(r'0x[0-9a-fA-F]{4,6}', stripped)
         if rgb_match and 'color' in stripped.lower():
             issues.append({"line": i, "ch": 0, "severity": "warning",
-                "message": "Possible RGB color value — PicoCalc uses 4-bit grayscale (0-15)"})
+                "message": "Possible RGB color value -- PicoCalc uses 4-bit grayscale (0-15)"})
 
         # fill(0); show() on exit (causes black screen flash)
         if 'fill(0)' in stripped and 'show()' in stripped:
             issues.append({"line": i, "ch": 0, "severity": "info",
-                "message": "fill(0)+show() on exit causes black flash — just return instead"})
+                "message": "fill(0)+show() on exit causes black flash -- just return instead"})
 
         # fill(0) in a draw loop without beginDraw
         if stripped.startswith('self.d') and 'fill(0)' in stripped:
@@ -642,16 +721,16 @@ def api_lint():
             nearby = "\n".join(lines[max(0,i-4):i-1])
             if 'beginDraw' not in nearby and 'static' not in nearby.lower():
                 issues.append({"line": i, "ch": 0, "severity": "warning",
-                    "message": "fill(0) without beginDraw() may cause flicker — use erase-move-draw pattern instead"})
+                    "message": "fill(0) without beginDraw() may cause flicker -- use erase-move-draw pattern instead"})
 
     # 3. File-level checks
     if not has_gc_collect and len(lines) > 20:
         issues.append({"line": 1, "ch": 0, "severity": "info",
-            "message": "Consider adding gc.collect() at app start — memory is limited (~190KB)"})
+            "message": "Consider adding gc.collect() at app start -- memory is limited (~190KB)"})
 
     if not has_esc_handler and len(lines) > 30 and 'picocalc' in code:
         issues.append({"line": 1, "ch": 0, "severity": "warning",
-            "message": "No ESC key handler found — apps should provide an exit path back to menu"})
+            "message": "No ESC key handler found -- apps should provide an exit path back to menu"})
 
     if not has_main_guard and 'def main' in code:
         issues.append({"line": 1, "ch": 0, "severity": "info",
@@ -660,7 +739,7 @@ def api_lint():
     return json_response({"issues": issues})
 
 
-# ── API: Deploy ───────────────────────────────────────────────────
+# --- API: Deploy ---
 
 @app.route("/api/deploy/<target>", method="POST")
 def api_deploy(target):
@@ -685,7 +764,7 @@ def api_deploy(target):
         return json_response({"error": str(e)}, 500)
 
 
-# ── API: Push single file ────────────────────────────────────────
+# --- API: Push single file ---
 
 @app.route("/api/push", method="POST")
 def api_push():
@@ -713,7 +792,7 @@ def api_push():
     return json_response({"ok": ok, "file": local_rel, "remote": remote, "msg": msg})
 
 
-# ── API: Upload (drag-and-drop) ──────────────────────────────────
+# --- API: Upload (drag-and-drop) ---
 
 @app.route("/api/upload", method="POST")
 def api_upload():
@@ -734,7 +813,7 @@ def api_upload():
         os.unlink(tmp.name)
 
 
-# ── API: Cleanup ──────────────────────────────────────────────────
+# --- API: Cleanup ---
 
 @app.route("/api/cleanup", method="POST")
 def api_cleanup():
@@ -750,7 +829,7 @@ def api_cleanup():
         return json_response({"error": str(e)}, 500)
 
 
-# ── API: Exec ─────────────────────────────────────────────────────
+# --- API: Exec ---
 
 @app.route("/api/exec", method="POST")
 def api_exec():
@@ -761,7 +840,7 @@ def api_exec():
     return json_response(result)
 
 
-# ── API: Reset ────────────────────────────────────────────────────
+# --- API: Reset ---
 
 @app.route("/api/reset", method="POST")
 def api_reset():
@@ -769,20 +848,28 @@ def api_reset():
     return json_response({"ok": ok})
 
 
-# ── API: Diff ─────────────────────────────────────────────────────
+@app.route("/api/eject", method="POST")
+def api_eject():
+    """Restart menu on device and signal dashboard to stop polling."""
+    ok = dm.eject()
+    return json_response({"ok": ok})
+
+
+# --- API: Diff ---
 
 @app.route("/api/diff")
 def api_diff():
     file_path = request.params.get("file")
     if not file_path:
         return json_response({"error": "file param required"}, 400)
-    diff_text, err = dm.diff_file(file_path)
+    diff_data, err = dm.diff_file(file_path)
     if err:
         return json_response({"error": err}, 404)
-    return json_response({"file": file_path, "diff": diff_text, "identical": len(diff_text) == 0})
+    identical = len(diff_data['rows']) > 0 and all(r['t'] == 'eq' for r in diff_data['rows'])
+    return json_response({"file": file_path, "diff": diff_data, "identical": identical})
 
 
-# ── API: Local file tree (for push UI) ───────────────────────────
+# --- API: Local file tree (for push UI) ---
 
 @app.route("/api/local/tree")
 def api_local_tree():
@@ -850,7 +937,7 @@ for d, exts in dirs:
     return json_response(tree)
 
 
-# ── Main ──────────────────────────────────────────────────────────
+# --- Main ---
 
 def main():
     global PORT, HOST
@@ -879,7 +966,7 @@ def main():
 
     url = f"http://localhost:{PORT}"
     print(f"\n  PicoCalc Dashboard")
-    print(f"  ──────────────────")
+    print(f"  --------------------")
     print(f"  Project:   {MP_DIR}")
     print(f"  Dashboard: {url}")
     print(f"  Press Ctrl+C to stop\n")

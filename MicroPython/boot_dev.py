@@ -1,18 +1,3 @@
-"""
-boot_thonny.py -- Thonny-compatible boot for PicoCalc
-
-Deploy as /boot.py on the device when using Thonny as your IDE.
-Skips os.dupterm() which causes Thonny's "raw paste" protocol errors.
-
-Trade-offs vs standard boot.py:
-  - Thonny connects cleanly (no raw paste errors)
-  - PicoCalc screen still shows the splash and menu
-  - PicoCalc keyboard still works in apps and the menu
-  - REPL output (>>>, print, errors) will NOT appear on the PicoCalc screen
-  - REPL output only shows in Thonny's shell panel
-
-To switch back to standard boot: deploy boot.py as /boot.py
-"""
 import sys
 # Ensure /modules is in path before any picocalc imports
 for _p in ["/modules", "/sd/py_scripts"]:
@@ -34,14 +19,14 @@ _C_WHT = 15
 _C_WARN = 10
 
 def _splash_init(d):
-    """Draw initial splash screen -- Thonny variant."""
+    """Draw initial splash screen -- DEV variant."""
     d.fill(_C_BLK)
     # Header bar
     d.fill_rect(0, 0, 320, 22, _C_DK)
     d.text("PICOCALC", 100, 7, _C_WHT)
-    d.text("THN", 168, 7, _C_WARN)
-    d.hline(0, 22, 320, _C_LT)
-    d.text("Booting...", 126, 34, _C_GR)
+    d.text("DEV", 168, 7, _C_WARN)
+    d.hline(0, 22, 320, _C_WARN)
+    d.text("Developer Boot", 110, 34, _C_WARN)
     d.show()
 
 def _splash_step(d, row, label, status, color=_C_LT):
@@ -55,7 +40,7 @@ def _splash_step(d, row, label, status, color=_C_LT):
     d.text(status, 214, y, color)
     d.show()
 
-# -- Boot sequence ------------------------------------------------
+# -- Boot sequence (DEV -- verbose SD, drops to REPL) -------------
 
 try:
     # 1. Display
@@ -74,30 +59,33 @@ try:
         _usb.write('\r\n')
     picocalc.usb_debug = usb_debug
 
-    # 4. SD card
+    # 4. SD card (verbose debug in dev mode)
     gc.collect()
     _splash_step(pc_display, 2, "SD Card", "...", _C_GR)
+    usb_debug("Starting SD card initialization (debug=True)...")
 
     import utime
     utime.sleep_ms(500)
 
     from enhanced_sd import initsd
-    sd = initsd(debug=False)
+    sd = initsd(debug=True)  # DEV: verbose SD output to USB
 
     if sd:
         try:
             st = os.statvfs('/sd')
-            mb = (st[0] * st[3]) // (1024 * 1024)
-            if mb >= 1024:
-                sd_str = f"{mb // 1024}.{(mb % 1024) * 10 // 1024}GB free"
+            total_mb = (st[0] * st[2]) // (1024 * 1024)
+            free_mb = (st[0] * st[3]) // (1024 * 1024)
+            if free_mb >= 1024:
+                sd_str = f"{free_mb // 1024}.{(free_mb % 1024) * 10 // 1024}GB free"
             else:
-                sd_str = f"{mb}MB free"
+                sd_str = f"{free_mb}MB free"
             _splash_step(pc_display, 2, "SD Card", sd_str, _C_WHT)
+            usb_debug(f"SD: {total_mb}MB total, {free_mb}MB free")
         except:
             _splash_step(pc_display, 2, "SD Card", "OK", _C_WHT)
-        usb_debug("SD card initialized")
+        usb_debug("SD card initialized successfully")
     else:
-        _splash_step(pc_display, 2, "SD Card", "FAIL", _C_GR)
+        _splash_step(pc_display, 2, "SD Card", "FAIL", _C_WARN)
         usb_debug("SD card initialization failed!")
 
     # 6. Terminal
@@ -119,19 +107,22 @@ try:
         return pye_edit(args, tab_size=tab_size, undo=undo, io_device=pc_terminal)
     picocalc.edit = edit
 
-    # 9. NO os.dupterm() -- Thonny compatibility
-    # Skipping dupterm prevents keyboard/VT data from leaking into
-    # Thonny's raw paste protocol. REPL output only shows in Thonny,
-    # not on the PicoCalc screen. Apps and menu still work normally
-    # because they read picocalc.terminal directly.
-    _splash_step(pc_display, 4, "Mode", "Thonny", _C_WARN)
+    # 9. Connect terminal to REPL
+    os.dupterm(pc_terminal)
 
-    # 10. Done
-    _splash_step(pc_display, 5, "Ready!", "", _C_WHT)
-    utime.sleep_ms(400)
-
+    # 10. Memory report
     gc.collect()
-    usb_debug(f"Boot complete (Thonny mode). Free: {gc.mem_free()} bytes")
+    free = gc.mem_free()
+    _splash_step(pc_display, 5, "Memory", f"{free // 1024}KB free", _C_WHT)
+    usb_debug(f"Boot complete. Free: {free} bytes")
+
+    # 11. DEV: Drop to REPL (no main_menu)
+    _splash_step(pc_display, 6, "Mode", "REPL", _C_WARN)
+    utime.sleep_ms(600)
 
 except Exception as e:
     sys.print_exception(e)
+    try:
+        os.dupterm(None).write(b"[boot_dev.py error]\n")
+    except:
+        pass
