@@ -41,15 +41,34 @@ This opens a browser dashboard where you can:
 - **New script** -- create scripts from a starter template with one click
 - **REPL** -- run Python on the device from the browser (30s timeout per command)
 - **Eject** -- safely disconnect with on-device countdown, then unplug USB
-- **REST API** -- all features accessible via HTTP for AI-assisted development
-
 > First run will prompt to install `mpremote` if needed. Requires Python 3.7+.
 >
 > **Adding new files:** Scripts in `modules/` and `sd/py_scripts/` are auto-discovered by the dashboard. Root-level files (like `boot.py`) must be added to `FILE_MAP` in `dashboard.py` to appear.
 
-#### Dashboard REST API
+#### Option B: AI-Assisted Development (Vibe Coding)
 
-The dashboard exposes a REST API that AI coding tools (Claude Code, Cursor, etc.) can use to interact with the PicoCalc directly -- write code, push it, test on device, all from the AI session:
+Let your AI coding assistant talk directly to the PicoCalc -- write code, push it, test on device, iterate, all from the AI conversation.
+
+**MCP Server (Recommended)**
+
+[MCP](https://modelcontextprotocol.io/) gives AI tools native access to the device with no dashboard running. Add to your `.mcp.json` or Claude Desktop config:
+
+```json
+{
+  "mcpServers": {
+    "picocalc": {
+      "command": "python3",
+      "args": ["/path/to/PicoCalc/MicroPython/tools/mcp_server.py"]
+    }
+  }
+}
+```
+
+Works with Claude Code, Claude Desktop, Cursor, and any MCP-compatible tool. Full setup guide: **[MCP_README.md](MicroPython/tools/MCP_README.md)**
+
+**Dashboard REST API (Legacy)**
+
+If you already have the dashboard running, AI tools can also use its HTTP endpoints:
 
 ```bash
 curl -s http://localhost:8265/api/device                          # Device status
@@ -63,7 +82,7 @@ curl -s -X POST http://localhost:8265/api/eject                   # Safe disconn
 
 All endpoints: `/api/device`, `/api/exec`, `/api/push`, `/api/pull`, `/api/files`, `/api/diff`, `/api/local/tree`, `/api/eject`, `/api/reset`, `/api/cleanup`
 
-#### Option B: Manual
+#### Option C: Manual
 
 Use [Thonny](https://thonny.org/), `mpremote`, or `rshell` to copy files to the Pico's internal flash.
 
@@ -152,8 +171,9 @@ MicroPython/
 |   |-- vtterminal.h
 |   |-- font6x8.h
 |   \-- micropython.cmake
-|-- tools/                       Development dashboard
+|-- tools/                       Development tools
 |   |-- dashboard.py                 Web UI server (run this!)
+|   |-- mcp_server.py                MCP server for AI assistants (see tools/MCP_README.md)
 |   |-- bottle.py                    Vendored web framework (zero install)
 |   \-- static/
 |       |-- index.html               Dashboard frontend
@@ -292,6 +312,7 @@ docker run --rm \
 
 ## What's New in v3.0
 
+- **[MCP Server](MicroPython/tools/MCP_README.md)** -- AI coding assistants (Claude Code, Claude Desktop, Cursor) can talk directly to the PicoCalc over USB via the Model Context Protocol -- run code, read/push files, check status, no dashboard needed
 - **[Synth 4.0](SYNTH.md)** -- ground-up rewrite with 4 instruments (Piano, Organ, Strings, Synth), QWERTY piano keyboard, ADSR envelope, arpeggiator, 16-step sequencer, LFO, presets, stereo harmonic enrichment
 - **Dashboard eject button** -- sends 7-second countdown to device screen, then reboots to menu for safe USB unplug
 - **Dashboard side-by-side diff** -- click a modified file to see device vs local changes color-coded in a split view
