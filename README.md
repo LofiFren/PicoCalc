@@ -1,5 +1,7 @@
 # PicoCalc MicroPython
 
+[![PyPI](https://img.shields.io/pypi/v/picocalc-mcp)](https://pypi.org/project/picocalc-mcp/) [![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/) [![License](https://img.shields.io/github/license/LofiFren/PicoCalc)](LICENSE) [![Platform](https://img.shields.io/badge/platform-RP2350-purple)](https://www.raspberrypi.com/products/rp2350/)
+
 A MicroPython firmware and script collection for the Clockwork Pi PicoCalc handheld device, powered by the **Raspberry Pi Pico 2W**. Features:
 
 - 320x320 LCD display with flicker-free rendering
