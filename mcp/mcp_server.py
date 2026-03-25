@@ -4,14 +4,15 @@ PicoCalc MCP Server
 Gives AI assistants direct access to a PicoCalc device over USB.
 
 Usage:
-  python3 mcp_server.py
+  pip install picocalc-mcp && picocalc-mcp
+  -- or --
+  python3 mcp/mcp_server.py
 
-Add to your AI tool's MCP config (e.g. Claude Desktop):
+MCP config:
 {
   "mcpServers": {
     "picocalc": {
-      "command": "python3",
-      "args": ["/path/to/MicroPython/tools/mcp_server.py"]
+      "command": "picocalc-mcp"
     }
   }
 }
@@ -291,7 +292,7 @@ def call_tool(name, args):
             remote = args.get("remote_path", "")
             if not local_rel or not remote:
                 return "Error: local_path and remote_path required"
-            mp_dir = Path(__file__).parent.parent
+            mp_dir = Path(__file__).parent.parent / "MicroPython"
             local_full = mp_dir / local_rel
             if not local_full.exists():
                 return f"Error: local file not found: {local_full}"

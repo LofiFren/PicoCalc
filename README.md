@@ -53,20 +53,27 @@ Let your AI coding assistant talk directly to the PicoCalc -- write code, push i
 
 **MCP Server (Recommended)**
 
-[MCP](https://modelcontextprotocol.io/) gives AI tools native access to the device with no dashboard running. Add to your `.mcp.json` or Claude Desktop config:
+[MCP](https://modelcontextprotocol.io/) gives AI tools native access to the device with no dashboard running. Install from PyPI:
+
+```bash
+pip install picocalc-mcp
+```
+
+Then add to your `.mcp.json` or Claude Desktop config:
 
 ```json
 {
   "mcpServers": {
     "picocalc": {
-      "command": "python3",
-      "args": ["/path/to/PicoCalc/MicroPython/tools/mcp_server.py"]
+      "command": "picocalc-mcp"
     }
   }
 }
 ```
 
-Works with Claude Code, Claude Desktop, Cursor, and any MCP-compatible tool. Full setup guide: **[MCP_README.md](MicroPython/tools/MCP_README.md)**
+Or run directly from the repo: `"args": ["/path/to/PicoCalc/mcp/mcp_server.py"]`
+
+Works with Claude Code, Claude Desktop, Cursor, and any MCP-compatible tool. Full setup guide: **[MCP_README.md](mcp/MCP_README.md)**
 
 **Claude Code Skills (Optional)**
 
@@ -184,11 +191,13 @@ MicroPython/
 |   \-- micropython.cmake
 |-- tools/                       Development tools
 |   |-- dashboard.py                 Web UI server (run this!)
-|   |-- mcp_server.py                MCP server for AI assistants (see tools/MCP_README.md)
 |   |-- bottle.py                    Vendored web framework (zero install)
 |   \-- static/
 |       |-- index.html               Dashboard frontend
 |       \-- vendor/                  CodeMirror editor (vendored, offline)
+mcp/                                 MCP server for AI assistants
+|-- mcp_server.py                    MCP server (pip install picocalc-mcp or run directly)
+\-- MCP_README.md                    Full setup guide
 ```
 
 ---
@@ -323,7 +332,7 @@ docker run --rm \
 
 ## What's New in v3.0
 
-- **[MCP Server](MicroPython/tools/MCP_README.md)** -- AI coding assistants (Claude Code, Claude Desktop, Cursor) can talk directly to the PicoCalc over USB via the Model Context Protocol -- run code, read/push files, check status, no dashboard needed
+- **[MCP Server](mcp/MCP_README.md)** -- AI coding assistants (Claude Code, Claude Desktop, Cursor) can talk directly to the PicoCalc over USB via the Model Context Protocol -- run code, read/push files, check status, no dashboard needed
 - **[Synth 4.0](SYNTH.md)** -- ground-up rewrite with 4 instruments (Piano, Organ, Strings, Synth), QWERTY piano keyboard, ADSR envelope, arpeggiator, 16-step sequencer, LFO, presets, stereo harmonic enrichment
 - **Dashboard eject button** -- sends 7-second countdown to device screen, then reboots to menu for safe USB unplug
 - **Dashboard side-by-side diff** -- click a modified file to see device vs local changes color-coded in a split view

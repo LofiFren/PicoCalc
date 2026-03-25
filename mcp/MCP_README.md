@@ -6,11 +6,22 @@ Give your AI coding assistant direct access to the PicoCalc device over USB.
 
 ---
 
+## Install
+
+The easiest way -- install from PyPI:
+
+```bash
+pip install picocalc-mcp
+```
+
+This installs the `picocalc-mcp` command and `mpremote` automatically.
+
+Or run directly from the repo (requires `pip install mpremote` separately).
+
 ## Prerequisites
 
 - **PicoCalc** connected via USB (serial port visible)
 - **Python 3.7+**
-- **mpremote** -- install with `pip install mpremote` (or `pip3 install mpremote`)
 
 Verify your device is connected:
 
@@ -26,47 +37,36 @@ ls /dev/ttyACM*
 
 ## Setup
 
-### Claude Code (CLI)
+### Option A: PyPI install (recommended)
 
-Add to your project's `.mcp.json` (or create it in the repo root):
+If you installed via `pip install picocalc-mcp`:
+
+```json
+{
+  "mcpServers": {
+    "picocalc": {
+      "command": "picocalc-mcp"
+    }
+  }
+}
+```
+
+### Option B: Run from repo
+
+If you cloned the PicoCalc repo:
 
 ```json
 {
   "mcpServers": {
     "picocalc": {
       "command": "python3",
-      "args": ["/full/path/to/PicoCalc/MicroPython/tools/mcp_server.py"]
+      "args": ["/full/path/to/PicoCalc/mcp/mcp_server.py"]
     }
   }
 }
 ```
 
-Then restart Claude Code. You'll see the PicoCalc tools available automatically.
-
-### Claude Desktop
-
-Open **Settings > Developer > Edit Config** and add under `mcpServers`:
-
-```json
-{
-  "mcpServers": {
-    "picocalc": {
-      "command": "python3",
-      "args": ["/full/path/to/PicoCalc/MicroPython/tools/mcp_server.py"]
-    }
-  }
-}
-```
-
-Restart Claude Desktop. The PicoCalc tools appear in the tool list.
-
-### Cursor / Other MCP Clients
-
-Any tool that supports MCP's stdio transport works. Point it at:
-
-```
-python3 MicroPython/tools/mcp_server.py
-```
+Add this config to `.mcp.json` (Claude Code), Claude Desktop settings, or your MCP client's config. Restart the client after editing.
 
 ---
 
@@ -139,9 +139,9 @@ The server uses `mpremote` (MicroPython's official tool) to communicate with the
 **Tools not appearing in Claude**
 - Check the path in your MCP config is correct and absolute
 - Restart your AI client after editing the config
-- Check stderr output: `python3 MicroPython/tools/mcp_server.py` should print "PicoCalc MCP Server starting..."
+- Check stderr output: `picocalc-mcp` (or `python3 mcp/mcp_server.py`) should print "PicoCalc MCP Server starting..."
 
 **Dashboard vs MCP**
-- The [Dashboard](../../README.md) (`dashboard.py`) is a web UI you use in your browser
+- The [Dashboard](../README.md) (`dashboard.py`) is a web UI you use in your browser
 - The MCP server is for AI assistants -- they call it directly, no browser needed
 - Both use `mpremote` under the hood, so don't run them at the same time
