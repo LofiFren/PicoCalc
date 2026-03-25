@@ -66,6 +66,15 @@ Let your AI coding assistant talk directly to the PicoCalc -- write code, push i
 
 Works with Claude Code, Claude Desktop, Cursor, and any MCP-compatible tool. Full setup guide: **[MCP_README.md](MicroPython/tools/MCP_README.md)**
 
+**Claude Code Skills (Optional)**
+
+For Claude Code users, the [code-skills](https://github.com/LofiFren/code-skills) repo provides PicoCalc-specific skills that teach the AI how to write correct apps, use the hardware APIs, review code, and handle device operations. The MCP server gives the AI hands to interact with the device; the skills give it the knowledge to build for it.
+
+```
+# With skill-deployer installed, just paste a URL:
+"install this skill https://github.com/LofiFren/code-skills/tree/main/skills/picocalc-app"
+```
+
 **Dashboard REST API (Legacy)**
 
 If you already have the dashboard running, AI tools can also use its HTTP endpoints:
