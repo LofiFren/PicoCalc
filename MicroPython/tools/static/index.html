@@ -231,12 +231,12 @@
   .sdiff .code { width: calc(50% - 36px); }
   .sdiff tr.eq .code { color: var(--text); }
   .sdiff tr.chg .code { color: var(--amber); }
-  .sdiff tr.chg td.code-l { background: rgba(255,170,0,0.06); }
-  .sdiff tr.chg td.code-r { background: rgba(0,255,136,0.06); }
-  .sdiff tr.del .code-l { color: var(--red); background: rgba(255,68,102,0.08); }
+  .sdiff tr.chg td.code-l { background: rgba(0,255,136,0.06); }
+  .sdiff tr.chg td.code-r { background: rgba(255,170,0,0.06); }
+  .sdiff tr.del .code-l { color: var(--green); background: rgba(0,255,136,0.08); }
   .sdiff tr.del .code-r { color: var(--dim); }
   .sdiff tr.ins .code-l { color: var(--dim); }
-  .sdiff tr.ins .code-r { color: var(--green); background: rgba(0,255,136,0.08); }
+  .sdiff tr.ins .code-r { color: var(--red); background: rgba(255,68,102,0.08); }
   .sdiff-wrap { overflow: auto; height: 100%; }
   .sdiff-header { display: flex; justify-content: space-between; padding: 4px 8px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 11px; }
   .sdiff-header span { font-family: var(--mono); }
@@ -797,7 +797,7 @@ async function diffSelected() {
 
   const d = data.diff;
   const esc = s => s == null ? '' : s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  let html = '<div class="sdiff-header"><span class="dh-device">device: ' + esc(d.device) + '</span><span class="dh-local">local: ' + esc(d.local) + '</span></div>';
+  let html = '<div class="sdiff-header"><span class="dh-local">local: ' + esc(d.local) + '</span><span class="dh-device">device: ' + esc(d.device) + '</span></div>';
   html += '<table class="sdiff"><colgroup><col class="ln"><col class="code"><col class="sep"><col class="ln"><col class="code"></colgroup>';
   for (const r of d.rows) {
     html += '<tr class="' + r.t + '">';

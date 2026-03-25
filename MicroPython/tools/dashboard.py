@@ -468,19 +468,19 @@ machine.reset()
         local_lines = local_content.splitlines()
         device_lines = device_content.splitlines()
 
-        # Build side-by-side diff using SequenceMatcher
-        sm = difflib.SequenceMatcher(None, device_lines, local_lines)
+        # Build side-by-side diff: local (left) vs device (right)
+        sm = difflib.SequenceMatcher(None, local_lines, device_lines)
         rows = []
         for tag, i1, i2, j1, j2 in sm.get_opcodes():
             if tag == 'equal':
                 for i, j in zip(range(i1, i2), range(j1, j2)):
-                    rows.append({'t': 'eq', 'ln_l': i+1, 'l': device_lines[i],
-                                 'ln_r': j+1, 'r': local_lines[j]})
+                    rows.append({'t': 'eq', 'ln_l': i+1, 'l': local_lines[i],
+                                 'ln_r': j+1, 'r': device_lines[j]})
             elif tag == 'replace':
                 max_len = max(i2 - i1, j2 - j1)
                 for k in range(max_len):
-                    left = device_lines[i1+k] if i1+k < i2 else None
-                    right = local_lines[j1+k] if j1+k < j2 else None
+                    left = local_lines[i1+k] if i1+k < i2 else None
+                    right = device_lines[j1+k] if j1+k < j2 else None
                     rows.append({'t': 'chg',
                                  'ln_l': i1+k+1 if left is not None else None,
                                  'l': left,
@@ -488,12 +488,12 @@ machine.reset()
                                  'r': right})
             elif tag == 'delete':
                 for i in range(i1, i2):
-                    rows.append({'t': 'del', 'ln_l': i+1, 'l': device_lines[i],
+                    rows.append({'t': 'del', 'ln_l': i+1, 'l': local_lines[i],
                                  'ln_r': None, 'r': None})
             elif tag == 'insert':
                 for j in range(j1, j2):
                     rows.append({'t': 'ins', 'ln_l': None, 'l': None,
-                                 'ln_r': j+1, 'r': local_lines[j]})
+                                 'ln_r': j+1, 'r': device_lines[j]})
         return {'rows': rows, 'device': remote, 'local': local_rel_path}, None
 
 
