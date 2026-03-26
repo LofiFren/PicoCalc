@@ -6,9 +6,14 @@
 **/.claude/
 .mcp.json
 
+# Python bytecode cache
+__pycache__/
+
 # Build artifacts
 MicroPython/pico_sdk_import.cmake
 
 # Temp/scratch files
 MicroPython/sd/py_scripts/test.py
 MicroPython/sd/py_scripts/picocalc_client_config.json
+MicroPython/sd/py_scripts/pixel_pal.py
+MicroPython/sd/py_scripts/train.py

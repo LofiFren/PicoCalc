@@ -145,3 +145,34 @@ The server uses `mpremote` (MicroPython's official tool) to communicate with the
 - The [Dashboard](../README.md) (`dashboard.py`) is a web UI you use in your browser
 - The MCP server is for AI assistants -- they call it directly, no browser needed
 - Both use `mpremote` under the hood, so don't run them at the same time
+
+---
+
+## Codex CLI / Codex IDE
+
+Codex does **not** use the repo `.mcp.json` file for MCP server discovery. You need to add the PicoCalc MCP server explicitly using the `codex mcp` command.
+
+### Add the server
+
+**PyPI install:**
+
+```bash
+codex mcp add picocalc -- picocalc-mcp
+```
+
+**From repo:**
+
+```bash
+codex mcp add picocalc -- python3 /full/path/to/PicoCalc/mcp/mcp_server.py
+```
+
+### Verify
+
+```bash
+codex mcp list
+codex mcp get picocalc --json
+```
+
+### Start a new session
+
+Existing Codex sessions will not pick up newly added MCP servers. Start a new session after adding the server.
