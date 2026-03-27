@@ -75,6 +75,8 @@ Or run directly from the repo: `"args": ["/path/to/PicoCalc/mcp/mcp_server.py"]`
 
 Works with Claude Code, Claude Desktop, Cursor, and any MCP-compatible tool. Full setup guide: **[MCP_README.md](mcp/MCP_README.md)**
 
+See it in action: [MCP & Dashboard Demo](https://youtu.be/iEJeBd9a6NE)
+
 **Claude Code Skills (Optional)**
 
 For Claude Code users, the [code-skills](https://github.com/LofiFren/code-skills) repo provides PicoCalc-specific skills that teach the AI how to write correct apps, use the hardware APIs, review code, and handle device operations. The MCP server gives the AI hands to interact with the device; the skills give it the knowledge to build for it.
@@ -373,4 +375,5 @@ Built on [PicoCalc-micropython-driver](https://github.com/zenodante/PicoCalc-mic
 - IG: [@lofifren](https://www.instagram.com/lofifren/)
 - YT: [@lofifren](https://www.youtube.com/@lofifren)
 - YouTube PicoCalc 2.0 Demo: [https://youtu.be/gf3ittEwFJ8](https://youtu.be/gf3ittEwFJ8)
+- YouTube MCP & Dashboard: [https://youtu.be/iEJeBd9a6NE](https://youtu.be/iEJeBd9a6NE)
 - Playlist: [PicoCalc Playlist](https://www.youtube.com/playlist?list=PL9WsMKb7awj9qmWcUHpMxpqV1nPUyIeuq)
