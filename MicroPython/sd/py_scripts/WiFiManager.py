@@ -12,6 +12,10 @@ import picocalc
 import utime
 import gc
 import json
+try:
+    import secure_creds as _sc
+except:
+    _sc = None
 
 # -- VT100 helpers (same pattern as py_run.py) ---------------------
 _E = '\033'
@@ -74,17 +78,63 @@ def _sec_str(auth):
 
 # -- WiFi helpers --------------------------------------------------
 
+_wifi_pin = [None]
+
 def _load_creds():
     try:
-        with open('wifi.json', 'r') as f:
+        with open('/sd/wifi.json', 'r') as f:
             c = json.load(f)
-        return c.get('ssid', ''), c.get('password', '')
+        ssid = c.get('ssid', '')
+        pwd = c.get('password', '')
+        if _sc and _sc.is_encrypted(pwd):
+            if not _wifi_pin[0] and _sc.has_pin():
+                return ssid, pwd
+            try:
+                pwd = _sc.decrypt_password(_wifi_pin[0], pwd)
+            except:
+                pwd = ''
+        return ssid, pwd
     except:
         return '', ''
 
-def _save_creds(ssid, pwd):
-    with open('wifi.json', 'w') as f:
-        json.dump({'ssid': ssid, 'password': pwd}, f)
+def _ensure_pin(ui):
+    if not _sc:
+        return False
+    if _wifi_pin[0]:
+        return True
+    if _sc.has_pin():
+        _at(20, 2); _style(fg=_CYN, bold=True); _w('ENTER PIN'); _rst()
+        for attempt in range(3):
+            pin = ui.prompt_password(22 + attempt, 'PIN: ')
+            if pin and _sc.verify_pin(pin):
+                _wifi_pin[0] = pin
+                return True
+            _at(22 + attempt, 20); _style(fg=_RED); _w(' Wrong'); _rst()
+        return False
+    else:
+        _at(20, 2); _style(fg=_CYN, bold=True); _w('SET PIN'); _rst()
+        _at(21, 2); _style(dim=True); _w('Protects saved passwords (4-8 digits)'); _rst()
+        pin = ui.prompt_password(23, 'New PIN: ')
+        if not pin or len(pin) < 4:
+            return False
+        confirm = ui.prompt_password(24, 'Confirm: ')
+        if pin != confirm:
+            _at(26, 2); _style(fg=_RED); _w("PINs don't match"); _rst()
+            return False
+        _sc.set_pin(pin)
+        _wifi_pin[0] = pin
+        return True
+
+
+def _save_creds(ssid, pwd, ui=None):
+    enc_pwd = pwd
+    if _sc and pwd:
+        if not _wifi_pin[0] and ui:
+            _ensure_pin(ui)
+        if _wifi_pin[0]:
+            enc_pwd = _sc.encrypt_password(_wifi_pin[0], pwd)
+    with open('/sd/wifi.json', 'w') as f:
+        json.dump({'ssid': ssid, 'password': enc_pwd}, f)
 
 def _get_wlan():
     wlan = network.WLAN(network.STA_IF)
@@ -181,8 +231,7 @@ class _UI:
         _style(fg=color); _w(msg); _rst()
 
     def wait_key(self, prompt='Press any key...'):
-        self.status_line(_H - 2, prompt, _dim_color=_WHT)
-        _at(_H - 2, 2); _style(dim=True); _w(prompt); _rst()
+        _at(_H - 2, 2); _cll(); _style(dim=True); _w(prompt); _rst()
         self.drain_keys()
         while not self.check_key():
             utime.sleep_ms(50)
@@ -264,6 +313,21 @@ class WiFiManager:
         self.ui = _UI()
         self.wlan = _get_wlan()
         self.sel = 0
+        if _sc and _sc.has_pin():
+            _clr()
+            _at(2, 2)
+            _style(fg=_CYN, bold=True)
+            _w('ENTER PIN')
+            _rst()
+            for attempt in range(3):
+                pin = self.ui.prompt_password(4 + attempt, 'PIN: ')
+                if pin and _sc.verify_pin(pin):
+                    _wifi_pin[0] = pin
+                    break
+                _at(4 + attempt, 20)
+                _style(fg=_RED)
+                _w(' Wrong')
+                _rst()
 
     def draw_menu(self):
         _clr()
@@ -354,6 +418,10 @@ class WiFiManager:
         ssid, pwd = _load_creds()
         if not ssid:
             self.ui.status_line(4, 'No saved credentials found.', _YEL)
+            self.ui.wait_key()
+            return
+        if _sc and _sc.is_encrypted(pwd):
+            self.ui.status_line(4, 'Password encrypted. Enter PIN first.', _YEL)
             self.ui.wait_key()
             return
 
@@ -518,7 +586,7 @@ class ScanScreen:
             _w('.')
 
         if _connect(self.wlan, ssid, password):
-            _save_creds(ssid, password)
+            _save_creds(ssid, password, self.ui)
             ip = self.wlan.ifconfig()[0]
             _at(12, 2); _style(fg=_GRN, bold=True); _w(f'Connected!'); _rst()
             _at(13, 2); _w(f'IP: {ip}')

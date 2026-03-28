@@ -500,8 +500,7 @@ async function pollDevice() {
     document.getElementById('infoFw').textContent = d.version || '--';
     // Auto-refresh device tree on new connection
     if (!wasConnected) {
-      log('Device connected -- loading files...', 'log-info');
-      buildDeviceTree();
+      log('Device connected', 'log-info');
     }
   } else {
     connected = false; dot.className = 'status-dot';
@@ -515,53 +514,102 @@ async function buildLocalTree() {
   const ul = document.getElementById('localTree');
   ul.innerHTML = '';
 
-  function addGroup(label, files) {
-    const li = document.createElement('li');
-    const hdr = document.createElement('div');
-    hdr.className = 'fl-item'; hdr.innerHTML = `<span class="fl-icon">&#x25BE;</span><span class="fl-name fl-dir">${label}</span>`;
-    li.appendChild(hdr);
-    const sub = document.createElement('ul');
-    for (const f of files) {
-      const fli = document.createElement('li');
-      const item = document.createElement('div');
-      item.dataset.path = f.name;
+  // Collect all files from all groups
+  const allFiles = [
+    ...(data.boot || []),
+    ...(data.modules || []),
+    ...(data.scripts || []),
+    ...(data.sd_other || [])
+  ];
 
-      // Server tells us: "match", "modified", or "missing"
-      const needsPush = f.status === 'modified' || f.status === 'missing';
-      item.className = 'fl-item' + (needsPush ? ' modified' : '');
-
-      let indicator = '';
-      if (f.status === 'missing') indicator = '<span class="fl-modified-dot" title="Not on device"></span>';
-      else if (f.status === 'modified') indicator = '<span class="fl-modified-dot" title="Modified -- click to diff"></span>';
-
-      item.innerHTML = `<span class="fl-icon">&#x25AB;</span><span class="fl-name">${f.name.split('/').pop()}</span>${indicator}<span class="fl-size">${fmt(f.size)}</span><button class="btn sm" style="margin-left:6px" onclick="event.stopPropagation(); pushFile('${f.name}')">push</button><button class="btn sm" onclick="event.stopPropagation(); openLocalFile('${f.name}')">edit</button>`;
-      item.draggable = true;
-      item.ondragstart = (e) => {
-        e.dataTransfer.setData('text/x-local-path', f.name);
-        e.dataTransfer.effectAllowed = 'copy';
-        document.getElementById('devicePane').classList.add('dragover');
-      };
-      item.ondragend = () => {
-        document.getElementById('devicePane').classList.remove('dragover');
-      };
-      // Modified files -> auto-diff; clean files -> open in editor
-      const fileStatus = f.status;
-      item.onclick = () => {
-        selectLocal(f.name, item);
-        if (fileStatus === 'modified') { diffSelected(); }
-        else { openLocalFile(f.name); }
-      };
-      fli.appendChild(item);
-      sub.appendChild(fli);
+  // Build nested dir tree structure
+  const root = {};
+  for (const f of allFiles) {
+    const parts = f.name.split('/');
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!node[parts[i]]) node[parts[i]] = {};
+      node = node[parts[i]];
     }
-    hdr.onclick = () => { sub.style.display = sub.style.display === 'none' ? 'block' : 'none'; };
-    li.appendChild(sub);
-    ul.appendChild(li);
+    node['__file__' + parts[parts.length - 1]] = f;
   }
 
-  if (data.boot) addGroup('boot', data.boot);
-  if (data.modules) addGroup('modules/', data.modules);
-  if (data.scripts) addGroup('sd/py_scripts/', data.scripts);
+  function makeFileItem(f) {
+    const fli = document.createElement('li');
+    const item = document.createElement('div');
+    item.dataset.path = f.name;
+    const needsPush = f.status === 'modified' || f.status === 'missing';
+    item.className = 'fl-item' + (needsPush ? ' modified' : '');
+    let indicator = '';
+    if (f.status === 'missing') indicator = '<span class="fl-modified-dot" title="Not on device"></span>';
+    else if (f.status === 'modified') indicator = '<span class="fl-modified-dot" title="Modified -- click to diff"></span>';
+    const fname = f.name.split('/').pop();
+    item.innerHTML = `<span class="fl-icon">&#x25AB;</span><span class="fl-name">${fname}</span>${indicator}<span class="fl-size">${fmt(f.size)}</span><button class="btn sm" style="margin-left:6px" onclick="event.stopPropagation(); pushFile('${f.name}')">push</button><button class="btn sm" onclick="event.stopPropagation(); openLocalFile('${f.name}')">edit</button><button class="btn sm" style="color:var(--red)" onclick="event.stopPropagation(); deleteLocalFile('${f.name}')">del</button>`;
+    item.draggable = true;
+    item.ondragstart = (e) => {
+      e.dataTransfer.setData('text/x-local-path', f.name);
+      e.dataTransfer.effectAllowed = 'copy';
+      document.getElementById('devicePane').classList.add('dragover');
+    };
+    item.ondragend = () => { document.getElementById('devicePane').classList.remove('dragover'); };
+    const fileStatus = f.status;
+    item.onclick = () => {
+      selectLocal(f.name, item);
+      if (fileStatus === 'modified') { diffSelected(); }
+      else { openLocalFile(f.name); }
+    };
+    fli.appendChild(item);
+    return fli;
+  }
+
+  function renderDir(parentUl, node, label, expanded) {
+    const li = document.createElement('li');
+    const hdr = document.createElement('div');
+    hdr.className = 'fl-item';
+    hdr.innerHTML = `<span class="fl-icon">${expanded ? '&#x25BE;' : '&#x25B8;'}</span><span class="fl-name fl-dir">${label}/</span>`;
+    li.appendChild(hdr);
+    const sub = document.createElement('ul');
+    sub.style.display = expanded ? 'block' : 'none';
+
+    const dirs = [];
+    const files = [];
+    for (const key of Object.keys(node).sort()) {
+      if (key.startsWith('__file__')) {
+        files.push(node[key]);
+      } else {
+        dirs.push(key);
+      }
+    }
+    for (const d of dirs) {
+      renderDir(sub, node[d], d, expanded);
+    }
+    for (const f of files) {
+      sub.appendChild(makeFileItem(f));
+    }
+    hdr.onclick = () => {
+      sub.style.display = sub.style.display === 'none' ? 'block' : 'none';
+      hdr.querySelector('.fl-icon').innerHTML = sub.style.display === 'none' ? '&#x25B8;' : '&#x25BE;';
+    };
+    li.appendChild(sub);
+    parentUl.appendChild(li);
+  }
+
+  // Render top-level: files at root, then directories
+  const dirs = [];
+  const rootFiles = [];
+  for (const key of Object.keys(root).sort()) {
+    if (key.startsWith('__file__')) {
+      rootFiles.push(root[key]);
+    } else {
+      dirs.push(key);
+    }
+  }
+  for (const f of rootFiles) {
+    ul.appendChild(makeFileItem(f));
+  }
+  for (const d of dirs) {
+    renderDir(ul, root[d], d, true);
+  }
 }
 
 function selectLocal(path, el) {
@@ -575,6 +623,13 @@ async function openLocalFile(relPath) {
   const data = await api('/api/local/file?path=' + encodeURIComponent(relPath));
   if (data.error) { toast(data.error, 'err'); return; }
   openEditor('local', relPath, data.content);
+}
+
+async function deleteLocalFile(relPath) {
+  if (!confirm('Delete local file ' + relPath + '?')) return;
+  const data = await api('/api/local/file?path=' + encodeURIComponent(relPath), {method: 'DELETE'});
+  if (data.ok) { toast('Deleted ' + relPath); log('Deleted local: ' + relPath, 'log-ok'); await buildLocalTree(); }
+  else { toast('Delete failed: ' + (data.error || ''), 'err'); }
 }
 
 // --- New script ---
@@ -610,47 +665,46 @@ async function buildDeviceTree() {
   try {
     const ul = document.getElementById('deviceTree');
     ul.innerHTML = '';
-    // Only load root -- sd/ and its children are navigable via click
-    await addDeviceDir(ul, '/', true);
+    // Load root and auto-expand /sd and /sd/py_scripts
+    await loadDeviceChildren(ul, '/', ['/sd', '/sd/py_scripts']);
   } finally {
     _buildingDeviceTree = false;
   }
 }
 
-async function addDeviceDir(parent, path, expanded) {
+async function loadDeviceChildren(parentEl, path, autoExpand) {
+  autoExpand = autoExpand || [];
   const data = await api('/api/files?path=' + encodeURIComponent(path));
   const files = data.files || [];
-
-  const li = document.createElement('li');
-  const hdr = document.createElement('div');
-  hdr.className = 'fl-item';
-  hdr.innerHTML = `<span class="fl-icon">${expanded ? '&#x25BE;' : '&#x25B8;'}</span><span class="fl-name fl-dir">${path}</span>`;
-  li.appendChild(hdr);
-
   const sub = document.createElement('ul');
-  sub.style.display = expanded ? 'block' : 'none';
 
   for (const f of files) {
     const fullPath = path.replace(/\/$/, '') + '/' + f.name;
     const fli = document.createElement('li');
 
     if (f.type === 'd') {
+      const shouldExpand = autoExpand.includes(fullPath);
       const dirItem = document.createElement('div');
       dirItem.className = 'fl-item';
-      dirItem.innerHTML = `<span class="fl-icon">&#x25B8;</span><span class="fl-name fl-dir">${f.name}/</span><button class="btn sm" style="margin-left:6px; color:var(--red)" onclick="event.stopPropagation(); deleteDeviceDir('${fullPath}')">del</button>`;
-      let loaded = false;
+      dirItem.innerHTML = `<span class="fl-icon">${shouldExpand ? '&#x25BE;' : '&#x25B8;'}</span><span class="fl-name fl-dir">${f.name}/</span><button class="btn sm" style="margin-left:6px; color:var(--red)" onclick="event.stopPropagation(); deleteDeviceDir('${fullPath}')">del</button>`;
+      fli.appendChild(dirItem);
+      let loaded = shouldExpand;
+      if (shouldExpand) {
+        await loadDeviceChildren(fli, fullPath, autoExpand);
+      }
       dirItem.onclick = async (e) => {
         e.stopPropagation();
         if (!loaded) {
-          await addDeviceDir(fli, fullPath, true);
+          await loadDeviceChildren(fli, fullPath);
           loaded = true;
           dirItem.querySelector('.fl-icon').innerHTML = '&#x25BE;';
         } else {
           const s = fli.querySelector('ul');
-          if (s) { s.style.display = s.style.display === 'none' ? 'block' : 'none'; }
+          if (s) { s.style.display = s.style.display === 'none' ? 'block' : 'none';
+            dirItem.querySelector('.fl-icon').innerHTML = s.style.display === 'none' ? '&#x25B8;' : '&#x25BE;';
+          }
         }
       };
-      fli.appendChild(dirItem);
     } else {
       const item = document.createElement('div');
       item.className = 'fl-item';
@@ -668,10 +722,7 @@ async function addDeviceDir(parent, path, expanded) {
     }
     sub.appendChild(fli);
   }
-
-  hdr.onclick = () => { sub.style.display = sub.style.display === 'none' ? 'block' : 'none'; };
-  li.appendChild(sub);
-  parent.appendChild(li);
+  parentEl.appendChild(sub);
 }
 
 function selectDevice(path, el) {

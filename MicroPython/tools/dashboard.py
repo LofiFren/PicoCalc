@@ -163,7 +163,7 @@ import os
 path = '{path}'
 result = []
 try:
-    for name in sorted(os.listdir(path)):
+    for name in sorted(set(os.listdir(path))):
         full = path.rstrip('/') + '/' + name
         try:
             st = os.stat(full)
@@ -513,7 +513,9 @@ def json_response(data, status=200):
 
 @app.route("/")
 def index():
-    return static_file("index.html", root=str(Path(__file__).parent / "static"))
+    resp = static_file("index.html", root=str(Path(__file__).parent / "static"))
+    resp.set_header("Cache-Control", "no-cache, no-store, must-revalidate")
+    return resp
 
 
 @app.route("/static/<filepath:path>")
@@ -621,6 +623,32 @@ def api_local_file_save():
         return json_response({"ok": False, "error": str(e)}, 500)
 
 
+@app.route("/api/local/file", method="DELETE")
+def api_local_file_delete():
+    """Delete a local project file."""
+    rel = request.params.get("path")
+    if not rel:
+        return json_response({"error": "path required"}, 400)
+    local_path = MP_DIR / rel
+    if not local_path.exists():
+        return json_response({"error": f"Not found: {rel}"}, 404)
+    if not local_path.is_file():
+        return json_response({"error": "Not a file"}, 400)
+    try:
+        local_path.unlink()
+        # Remove empty parent dirs up to MP_DIR
+        p = local_path.parent
+        while p != MP_DIR:
+            try:
+                p.rmdir()  # only removes if empty
+                p = p.parent
+            except OSError:
+                break
+        return json_response({"ok": True, "path": rel})
+    except Exception as e:
+        return json_response({"ok": False, "error": str(e)}, 500)
+
+
 @app.route("/api/pull", method="POST")
 def api_pull():
     """Pull a file from device to local project directory."""
@@ -635,15 +663,11 @@ def api_pull():
     if content is None:
         return json_response({"error": f"Cannot read device:{device_path}"}, 404)
 
-    # Determine local destination based on device path
-    if device_path.startswith("/modules/"):
-        local_rel = "modules/" + Path(device_path).name
-    elif device_path.startswith("/sd/py_scripts/"):
-        local_rel = "sd/py_scripts/" + Path(device_path).name
-    elif Path(device_path).name in ("boot.py", "main.py"):
-        local_rel = Path(device_path).name
+    # Determine local destination mirroring device path
+    if device_path.startswith("/"):
+        local_rel = device_path.lstrip("/")
     else:
-        local_rel = Path(device_path).name
+        local_rel = device_path
 
     local_path = MP_DIR / local_rel
 
@@ -778,15 +802,11 @@ def api_push():
     if not local_path.exists():
         return json_response({"error": f"Local file not found: {local_rel}"}, 404)
 
-    # Auto-detect device path
-    if local_rel.startswith("modules/"):
-        remote = f"/modules/{Path(local_rel).name}"
-    elif local_rel.startswith("sd/py_scripts/") or local_rel.startswith("sd\\py_scripts\\"):
-        remote = f"/sd/py_scripts/{Path(local_rel).name}"
-    elif local_rel in FILE_MAP:
+    # Auto-detect device path mirroring local structure
+    if local_rel in FILE_MAP:
         remote = FILE_MAP[local_rel]
     else:
-        remote = f"/{Path(local_rel).name}"
+        remote = "/" + local_rel.replace("\\", "/")
 
     ok, msg = dm.push_file(local_path, remote)
     return json_response({"ok": ok, "file": local_rel, "remote": remote, "msg": msg})
@@ -874,28 +894,30 @@ def api_diff():
 @app.route("/api/local/tree")
 def api_local_tree():
     """Return local repo files grouped by deploy target, with device size comparison."""
-    tree = {"boot": [], "modules": [], "scripts": []}
+    tree = {"boot": [], "modules": [], "scripts": [], "sd_other": []}
 
     # Query device file sizes in one shot for comparison
     device_sizes = {}
     try:
         code = """
 import os
-def sz(path):
-    try:
-        return os.stat(path)[6]
-    except:
-        return -1
-dirs = [('/', ['.py']), ('/modules', ['.py']), ('/sd/py_scripts', ['.py'])]
-for d, exts in dirs:
+def walk(d):
     try:
         for f in os.listdir(d):
-            for ext in exts:
-                if f.endswith(ext):
-                    full = d.rstrip('/') + '/' + f
-                    print(full + '|' + str(sz(full)))
+            full = d.rstrip('/') + '/' + f
+            try:
+                st = os.stat(full)
+                if st[0] & 0x4000:
+                    walk(full)
+                else:
+                    print(full + '|' + str(st[6]))
+            except:
+                pass
     except:
         pass
+walk('/')
+walk('/modules')
+walk('/sd')
 """
         result = dm.exec_code(code)
         for line in result.get("out", "").strip().split("\n"):
@@ -917,22 +939,35 @@ for d, exts in dirs:
             status = "modified"  # size differs
         return {"name": name, "size": st.st_size, "dev_size": dev_size, "status": status}
 
-    # Root files must be listed here explicitly (add new ones to this list).
-    # Files in modules/ and sd/py_scripts/ are auto-discovered below.
+    # Root boot files
     for name in ["boot.py", "main.py", "boot_thonny.py", "boot_dev.py"]:
         p = MP_DIR / name
         if p.exists():
             tree["boot"].append(file_entry(name, p, f"/{name}"))
 
+    # Modules
     modules_dir = MP_DIR / "modules"
     if modules_dir.is_dir():
         for f in sorted(modules_dir.glob("*.py")):
             tree["modules"].append(file_entry(f"modules/{f.name}", f, f"/modules/{f.name}"))
 
+    _HIDDEN = {'.DS_Store', '.gitkeep', '.gitignore', 'Thumbs.db', '__pycache__'}
+
+    # Scripts (sd/py_scripts)
     scripts_dir = MP_DIR / "sd" / "py_scripts"
     if scripts_dir.is_dir():
-        for f in sorted(scripts_dir.glob("*.py")):
-            tree["scripts"].append(file_entry(f"sd/py_scripts/{f.name}", f, f"/sd/py_scripts/{f.name}"))
+        for f in sorted(scripts_dir.glob("*")):
+            if f.is_file() and f.name not in _HIDDEN:
+                rel = f"sd/py_scripts/{f.name}"
+                tree["scripts"].append(file_entry(rel, f, f"/{rel}"))
+
+    # All other sd/ files (recursive, excluding py_scripts)
+    sd_dir = MP_DIR / "sd"
+    if sd_dir.is_dir():
+        for f in sorted(sd_dir.rglob("*")):
+            if f.is_file() and f.name not in _HIDDEN and "py_scripts" not in f.relative_to(sd_dir).parts[:1]:
+                rel = str(f.relative_to(MP_DIR)).replace("\\", "/")
+                tree["sd_other"].append(file_entry(rel, f, f"/{rel}"))
 
     return json_response(tree)
 

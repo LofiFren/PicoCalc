@@ -17,3 +17,4 @@ MicroPython/sd/py_scripts/test.py
 MicroPython/sd/py_scripts/picocalc_client_config.json
 MicroPython/sd/py_scripts/pixel_pal.py
 MicroPython/sd/py_scripts/train.py
+MicroPython/sd/ssh_known_hosts.json

@@ -8,6 +8,7 @@ A MicroPython firmware and script collection for the Clockwork Pi PicoCalc handh
 - Membrane keyboard with VT100 terminal
 - Arrow-key navigable menu system
 - Games (Tetris, Snake), 4-instrument Synthesizer, BLE Keyboard, WiFi Manager, LLM client
+- SSH client with ECDH-SHA2-NISTP256, AES-128-CTR encryption, interactive VT100 terminal
 - Development dashboard with file manager, editor, diff, REPL, eject
 - SD card script auto-discovery
 
@@ -213,9 +214,31 @@ mcp/                                 MCP server for AI assistants
 | **[Synth](SYNTH.md)** | 4-instrument synthesizer (Piano, Organ, Strings, Synth) with QWERTY piano keyboard, ADSR envelope, arpeggiator, 16-step sequencer, LFO effects, presets |
 | **ProxiScan** | BLE proximity scanner, fox hunt tool with compass, signal tracking, competition timer, waypoints, antenna calibration |
 | **WiFiManager** | WiFi scanner with VT100 UI, signal bars, channel analysis, signal monitor |
+| **SSH Client** | Secure shell client -- ECDH-SHA2-NISTP256 key exchange, AES-128-CTR + HMAC-SHA2-256 encryption, RSA host key verification (TOFU), saved connection profiles with PIN-encrypted passwords, interactive VT100 terminal (53x40) |
 | **Ollama Client** | Chat with local LLMs over WiFi via Ollama |
 | **Demo** | Visual display showcase: grayscale palette, bouncing boxes, scrolling gradient, device info |
 | **Editor** | On-device file browser and code editor -- browse, create, edit, delete scripts without a computer |
+
+### SSH Client Notes
+
+The SSH client supports modern OpenSSH 10.x servers (which dropped legacy DH key exchange) via ECDH-SHA2-NISTP256, with automatic fallback to diffie-hellman-group14 for older servers. Key exchange completes in ~1.3 seconds on the RP2350.
+
+**Required files:**
+- `sd/py_scripts/ssh_client.py` -- the SSH client application
+- `sd/py_scripts/secure_creds.py` -- PIN-based credential encryption library
+- `sd/wifi.json` -- WiFi credentials (created by WiFiManager)
+
+**Auto-created on first use:**
+- `/sd/ssh_profiles.json` -- saved connection profiles (passwords encrypted)
+- `/sd/ssh_known_hosts.json` -- trusted host key fingerprints
+
+**Usage:**
+- **Connect**: Select a saved profile or create a new connection (host, port, user, password)
+- **Edit profiles**: Press **E** on a saved connection to update host/port/credentials
+- **Disconnect**: Press **ESC-ESC** to exit the terminal session
+- **Ctrl+C**: Works for interrupting remote commands. For high-output programs like `top`, you may need to press Ctrl+C rapidly a few times since the keyboard is polled between SSH packets
+- **Host keys**: First connection uses Trust-On-First-Use (TOFU) -- you confirm the fingerprint once, and it's saved
+- **Passwords**: Always encrypted at rest with a 4-8 digit PIN via AES-128-CBC. You will be prompted to set a PIN on first save
 
 ---
 

@@ -112,6 +112,8 @@ class DeviceManager:
     def push_file(self, local_path, remote_path):
         with self.lock:
             rc, out, err = self._run("fs", "cp", str(local_path), f":{remote_path}", timeout=30)
+            if rc == 0:
+                self._run("exec", "import os; os.sync()", timeout=5)
             return rc == 0, out + err
 
     def read_file(self, remote_path):

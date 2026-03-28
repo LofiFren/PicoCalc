@@ -65,6 +65,8 @@ def _box_v():
 
 # -- File utilities ---------------------------------------------
 
+_HIDDEN_LIBS = {'secure_creds.py', '__init__.py'}
+
 def find_py_files(base_path="/sd"):
     py_files = []
     try:
@@ -75,7 +77,7 @@ def find_py_files(base_path="/sd"):
                 if mode & 0x4000:  # Directory
                     sub_files = find_py_files(full_path)
                     py_files.extend(sub_files)
-                elif entry.endswith(".py"):
+                elif entry.endswith(".py") and entry not in _HIDDEN_LIBS:
                     relative_path = full_path[len("/sd/"):-3]
                     py_files.append(relative_path)
             except Exception as e:
