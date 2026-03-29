@@ -87,12 +87,13 @@ def _load_creds():
         ssid = c.get('ssid', '')
         pwd = c.get('password', '')
         if _sc and _sc.is_encrypted(pwd):
-            if not _wifi_pin[0] and _sc.has_pin():
-                return ssid, pwd
-            try:
-                pwd = _sc.decrypt_password(_wifi_pin[0], pwd)
-            except:
-                pwd = ''
+            if _wifi_pin[0]:
+                try:
+                    pwd = _sc.decrypt_password(_wifi_pin[0], pwd)
+                except:
+                    return ssid, ''
+            else:
+                return ssid, ''
         return ssid, pwd
     except:
         return '', ''
@@ -102,37 +103,36 @@ def _ensure_pin(ui):
         return False
     if _wifi_pin[0]:
         return True
+    _clr()
+    ui.drain_keys()
     if _sc.has_pin():
-        _at(20, 2); _style(fg=_CYN, bold=True); _w('ENTER PIN'); _rst()
+        _at(3, 2); _style(fg=_CYN, bold=True); _w('ENTER PIN'); _rst()
         for attempt in range(3):
-            pin = ui.prompt_password(22 + attempt, 'PIN: ')
+            pin = ui.prompt_password(5 + attempt, 'PIN: ')
             if pin and _sc.verify_pin(pin):
                 _wifi_pin[0] = pin
                 return True
-            _at(22 + attempt, 20); _style(fg=_RED); _w(' Wrong'); _rst()
+            _at(5 + attempt, 20); _style(fg=_RED); _w(' Wrong'); _rst()
         return False
     else:
-        _at(20, 2); _style(fg=_CYN, bold=True); _w('SET PIN'); _rst()
-        _at(21, 2); _style(dim=True); _w('Protects saved passwords (4-8 digits)'); _rst()
-        pin = ui.prompt_password(23, 'New PIN: ')
+        _at(3, 2); _style(fg=_CYN, bold=True); _w('SET PIN'); _rst()
+        _at(4, 2); _style(dim=True); _w('Protects saved passwords (4-8 digits)'); _rst()
+        pin = ui.prompt_password(6, 'New PIN: ')
         if not pin or len(pin) < 4:
             return False
-        confirm = ui.prompt_password(24, 'Confirm: ')
+        confirm = ui.prompt_password(7, 'Confirm: ')
         if pin != confirm:
-            _at(26, 2); _style(fg=_RED); _w("PINs don't match"); _rst()
+            _at(9, 2); _style(fg=_RED); _w("PINs don't match"); _rst()
             return False
         _sc.set_pin(pin)
         _wifi_pin[0] = pin
         return True
 
 
-def _save_creds(ssid, pwd, ui=None):
+def _save_creds(ssid, pwd):
     enc_pwd = pwd
-    if _sc and pwd:
-        if not _wifi_pin[0] and ui:
-            _ensure_pin(ui)
-        if _wifi_pin[0]:
-            enc_pwd = _sc.encrypt_password(_wifi_pin[0], pwd)
+    if _sc and pwd and _wifi_pin[0]:
+        enc_pwd = _sc.encrypt_password(_wifi_pin[0], pwd)
     with open('/sd/wifi.json', 'w') as f:
         json.dump({'ssid': ssid, 'password': enc_pwd}, f)
 
@@ -157,9 +157,8 @@ def _scan(wlan):
 
 def _connect(wlan, ssid, password):
     """Connect with timeout. Returns True on success."""
-    if wlan.isconnected():
-        wlan.disconnect()
-        utime.sleep_ms(500)
+    wlan.disconnect()
+    utime.sleep_ms(500)
     wlan.connect(ssid, password)
     for _ in range(20):
         if wlan.isconnected():
@@ -174,7 +173,49 @@ class _UI:
     """Shared drawing methods for all screens."""
 
     def __init__(self):
-        self.key_buf = bytearray(10)
+        self.key_buf = bytearray(32)
+        self._pending = bytearray()
+
+    def check_key(self):
+        if not self._pending:
+            try:
+                count = picocalc.terminal.readinto(self.key_buf)
+            except OSError:
+                count = None
+            if not count:
+                return None
+            self._pending = bytearray(self.key_buf[:count])
+        b = self._pending
+        if b[0] == 0x1b:
+            if len(b) >= 2 and b[1] == 0x1b:
+                self._pending = b[2:]
+                return b'\x1b\x1b'
+            if len(b) >= 3 and b[1] == 0x5b:
+                self._pending = b[3:]
+                return bytes(b[:3])
+            if len(b) == 2 and b[1] == 0x5b:
+                return None
+            self._pending = b[1:]
+            return b'\x1b'
+        if b[0] == 0x0d:
+            if len(b) >= 2 and b[1] == 0x0a:
+                self._pending = b[2:]
+            else:
+                self._pending = b[1:]
+            return b'\r'
+        ch = bytes(b[:1])
+        self._pending = b[1:]
+        return ch
+
+    def drain_keys(self):
+        self._pending = bytearray()
+        picocalc.terminal.dryBuffer()
+        for _ in range(10):
+            try:
+                if not picocalc.terminal.readinto(self.key_buf):
+                    break
+            except:
+                break
 
     def header(self, title, wlan):
         _at(1, 1)
@@ -208,23 +249,7 @@ class _UI:
             _rst(); _style(dim=True); _w(f' {label}  ')
         _rst()
 
-    def check_key(self):
-        try:
-            count = picocalc.terminal.readinto(self.key_buf)
-        except OSError:
-            count = None
-        if not count:
-            return None
-        return bytes(self.key_buf[:count])
 
-    def drain_keys(self):
-        picocalc.terminal.dryBuffer()
-        for _ in range(10):
-            try:
-                if not picocalc.terminal.readinto(self.key_buf):
-                    break
-            except:
-                break
 
     def status_line(self, row, msg, color=_CYN):
         _at(row, 2); _cll()
@@ -315,6 +340,7 @@ class WiFiManager:
         self.sel = 0
         if _sc and _sc.has_pin():
             _clr()
+            self.ui.drain_keys()
             _at(2, 2)
             _style(fg=_CYN, bold=True)
             _w('ENTER PIN')
@@ -420,11 +446,19 @@ class WiFiManager:
             self.ui.status_line(4, 'No saved credentials found.', _YEL)
             self.ui.wait_key()
             return
-        if _sc and _sc.is_encrypted(pwd):
-            self.ui.status_line(4, 'Password encrypted. Enter PIN first.', _YEL)
-            self.ui.wait_key()
-            return
+        if not pwd:
+            if _sc and not _wifi_pin[0]:
+                _ensure_pin(self.ui)
+                ssid, pwd = _load_creds()
+            if not pwd:
+                _clr()
+                self.ui.header('Saved Network', self.wlan)
+                self.ui.status_line(4, 'PIN required to decrypt password.', _YEL)
+                self.ui.wait_key()
+                return
 
+        _clr()
+        self.ui.header('Saved Network', self.wlan)
         self.ui.status_line(4, f'Connecting to: {ssid}...', _CYN)
         if _connect(self.wlan, ssid, pwd):
             self.ui.status_line(5, f'Connected! IP: {self.wlan.ifconfig()[0]}', _GRN)
@@ -586,10 +620,22 @@ class ScanScreen:
             _w('.')
 
         if _connect(self.wlan, ssid, password):
-            _save_creds(ssid, password, self.ui)
+            if _sc and password and not _wifi_pin[0]:
+                if _ensure_pin(self.ui):
+                    _save_creds(ssid, password)
+                else:
+                    _save_creds(ssid, password)
+            else:
+                _save_creds(ssid, password)
+            _clr()
+            self.ui.header('Connect', self.wlan)
             ip = self.wlan.ifconfig()[0]
-            _at(12, 2); _style(fg=_GRN, bold=True); _w(f'Connected!'); _rst()
-            _at(13, 2); _w(f'IP: {ip}')
+            _at(4, 2); _style(fg=_GRN, bold=True); _w(f'Connected to {ssid}'); _rst()
+            _at(5, 2); _w(f'IP: {ip}')
+            if _wifi_pin[0]:
+                _at(6, 2); _style(dim=True); _w('Password encrypted and saved.'); _rst()
+            else:
+                _at(6, 2); _style(dim=True); _w('Password saved.'); _rst()
         else:
             _at(12, 2); _style(fg=_RED, bold=True); _w('Connection failed'); _rst()
 

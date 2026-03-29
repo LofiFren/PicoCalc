@@ -760,20 +760,49 @@ def _save_hosts(h):
 
 class SSHApp:
     def __init__(self):
-        self._kb = bytearray(16)
+        self._kb = bytearray(32)
+        self._pending = bytearray()
         self.profiles = _load_profiles()
         self.known = _load_hosts()
         self.session = None
         self._pin = None
 
     def _key(self):
-        try:
-            n = picocalc.terminal.readinto(self._kb)
-        except OSError:
-            n = None
-        return bytes(self._kb[:n]) if n else None
+        if not self._pending:
+            try:
+                n = picocalc.terminal.readinto(self._kb)
+            except OSError:
+                n = None
+            if not n:
+                return None
+            self._pending = bytearray(self._kb[:n])
+        b = self._pending
+        if b[0] == 0x1b:
+            if len(b) >= 2 and b[1] == 0x1b:
+                self._pending = b[2:]
+                return b'\x1b\x1b'
+            if len(b) >= 3 and b[1] == 0x5b:
+                self._pending = b[3:]
+                return bytes(b[:3])
+            if len(b) == 2 and b[1] == 0x5b:
+                return None
+            if len(b) >= 3 and b[1] == ord('O'):
+                self._pending = b[3:]
+                return bytes(b[:3])
+            self._pending = b[1:]
+            return b'\x1b'
+        if b[0] == 0x0d:
+            if len(b) >= 2 and b[1] == 0x0a:
+                self._pending = b[2:]
+            else:
+                self._pending = b[1:]
+            return b'\r'
+        ch = bytes(b[:1])
+        self._pending = b[1:]
+        return ch
 
     def _drain(self):
+        self._pending = bytearray()
         picocalc.terminal.dryBuffer()
         for _ in range(10):
             try:
@@ -799,10 +828,7 @@ class SSHApp:
                 return None
             confirm = self._input(7, 'Confirm: ', secret=True)
             if pin != confirm:
-                _at(9, 2)
-                _fg(_RED)
-                _w("PINs don't match")
-                _rst()
+                _at(9, 2); _fg(_RED); _w("PINs don't match"); _rst()
                 self._wait()
                 return None
             secure_creds.set_pin(pin)
@@ -876,31 +902,53 @@ class SSHApp:
         if wlan.isconnected():
             return True
         wlan.active(True)
+        ssid = ''
+        pwd = ''
         try:
             with open('/sd/wifi.json', 'r') as f:
                 c = json.load(f)
             ssid = c.get('ssid', '')
             pwd = c.get('password', '')
-            if ssid:
-                _at(3, 3)
-                _fg(_YEL)
-                _w(f'WiFi: {ssid}...')
+        except:
+            pass
+        if ssid and pwd:
+            if secure_creds.is_encrypted(pwd):
+                if not self._pin:
+                    self._get_pin()
+                    _clr()
+                    self._header('SSH')
+                if self._pin:
+                    try:
+                        pwd = secure_creds.decrypt_password(self._pin, pwd)
+                    except:
+                        pwd = ''
+                else:
+                    pwd = ''
+            if pwd:
+                _at(3, 3); _fg(_YEL)
+                _w(f'WiFi: {ssid[:40]}...')
                 _rst()
+                wlan.disconnect()
+                utime.sleep_ms(300)
                 wlan.connect(ssid, pwd)
                 for _ in range(20):
                     if wlan.isconnected():
-                        _at(4, 3)
-                        _fg(_GRN)
+                        _at(4, 3); _fg(_GRN)
                         _w(f'IP: {wlan.ifconfig()[0]}')
                         _rst()
                         return True
                     utime.sleep_ms(500)
-        except:
-            pass
-        _at(4, 3)
-        _fg(_RED)
-        _w('No WiFi. Run WiFi Manager first.')
-        _rst()
+                _at(4, 3); _fg(_RED)
+                _w('Connection failed.')
+                _rst()
+            else:
+                _at(3, 3); _fg(_RED)
+                _w('Could not decrypt WiFi password.')
+                _rst()
+        else:
+            _at(3, 3); _fg(_RED)
+            _w('No saved WiFi. Run WiFi Manager first.')
+            _rst()
         return False
 
     def _header(self, title):
@@ -1103,27 +1151,49 @@ class SSHApp:
         if pwd is None:
             return
 
-        if pwd:
-            if not self._pin:
-                _clr()
-                self._header('Edit')
-                pin = self._get_pin()
-                if not pin:
-                    return
-            enc_pwd = secure_creds.encrypt_password(self._pin, pwd)
-        else:
-            enc_pwd = p.get('password', '')
+        try:
+            if pwd:
+                if not self._pin:
+                    _clr()
+                    self._header('Edit')
+                    self._drain()
+                    pin = self._get_pin()
+                    self._drain()
+                    if not pin:
+                        _clr()
+                        self._header('Edit')
+                        _at(5, 2); _fg(_RED, bold=True)
+                        _w('PIN required. Not saved.')
+                        _rst()
+                        _at(7, 2); _fg(_WHT); _w('Press any key...'); _rst()
+                        self._drain()
+                        while not self._key():
+                            utime.sleep_ms(50)
+                        return
+                enc_pwd = secure_creds.encrypt_password(self._pin, pwd)
+            else:
+                enc_pwd = p.get('password', '')
 
-        self.profiles[idx] = {
-            'host': host, 'port': port,
-            'user': user, 'password': enc_pwd
-        }
-        _save_profiles(self.profiles)
-        _at(13, 2)
-        _fg(_GRN, bold=True)
-        _w('Saved!')
-        _rst()
-        utime.sleep_ms(600)
+            self.profiles[idx] = {
+                'host': host, 'port': port,
+                'user': user, 'password': enc_pwd
+            }
+            _save_profiles(self.profiles)
+            _clr()
+            self._header('Edit')
+            _at(5, 2); _fg(_GRN, bold=True)
+            _w('SAVED!')
+            _rst()
+        except Exception as e:
+            _clr()
+            self._header('Edit')
+            _at(5, 2); _fg(_RED, bold=True)
+            _w(f'ERROR: {e}')
+            _rst()
+        _at(7, 2); _fg(_WHT); _w('Press any key...'); _rst()
+        self._drain()
+        while not self._key():
+            utime.sleep_ms(50)
 
     def new_conn(self):
         _clr()
@@ -1156,6 +1226,7 @@ class SSHApp:
         _fg(_YEL)
         _w('Save profile? (y/n) ')
         _rst()
+        self._drain()
         while True:
             k = self._key()
             if not k:
@@ -1165,17 +1236,42 @@ class SSHApp:
                 if not self._pin:
                     _clr()
                     self._header('New')
+                    self._drain()
                     pin = self._get_pin()
+                    self._drain()
+                    _clr()
+                    self._header('New')
                     if not pin:
-                        _w('Skipped (not saved)')
+                        _at(4, 2); _fg(_RED, bold=True)
+                        _w('PIN not set. Profile NOT saved.')
+                        _rst()
+                        self._wait()
                         break
+                    _at(4, 2); _fg(_GRN, bold=True)
+                    _w('PIN set OK!')
+                    _rst()
+                    utime.sleep_ms(800)
+                _clr()
+                self._header('New')
+                _at(4, 2); _fg(_YEL); _w('Saving profile...'); _rst()
                 enc_pwd = secure_creds.encrypt_password(self._pin, pwd)
                 self.profiles.append({
                     'host': host, 'port': port,
                     'user': user, 'password': enc_pwd
                 })
                 _save_profiles(self.profiles)
-                _w('Saved (encrypted)')
+                _clr()
+                self._header('New')
+                _at(5, 2); _fg(_GRN, bold=True)
+                _w('PROFILE SAVED')
+                _rst()
+                _at(7, 2); _fg(_WHT)
+                _w('Press any key to connect...')
+                _rst()
+                self._drain()
+                while not self._key():
+                    utime.sleep_ms(50)
+                self._drain()
                 break
             else:
                 break
@@ -1183,6 +1279,7 @@ class SSHApp:
         self.do_connect(host, port, user, pwd)
 
     def do_connect(self, host, port, user, pwd):
+        gc.collect()
         _clr()
         _cur(False)
         self._header(f'{user}@{host}')
@@ -1310,6 +1407,8 @@ class SSHApp:
 
     def _terminal(self):
         session = self.session
+        self._pending = bytearray()
+        self._drain()
 
         # Init remote shell: disable zsh PROMPT_SP, set TERM, clear
         session.send_data(
