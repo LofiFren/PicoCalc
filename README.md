@@ -217,6 +217,7 @@ mcp/                                 MCP server for AI assistants
 | **ProxiScan** | BLE proximity scanner, fox hunt tool with compass, signal tracking, competition timer, waypoints, antenna calibration |
 | **WiFiManager** | WiFi scanner with VT100 UI, signal bars, channel analysis, signal monitor |
 | **SSH Client** | Secure shell client -- ECDH-SHA2-NISTP256 key exchange, AES-128-CTR + HMAC-SHA2-256 encryption, RSA host key verification (TOFU), saved connection profiles with PIN-encrypted passwords, interactive VT100 terminal (53x40) |
+| **SSH Server** | SSH *into* the PicoCalc for a MicroPython REPL -- ECDH-SHA2-NISTP256 key exchange, ECDSA-nistp256 host key, AES-128-CTR + HMAC-SHA2-256, password (salted-hash) and public-key (authorized_keys) auth |
 | **Ollama Client** | Chat with local LLMs over WiFi via Ollama |
 | **Demo** | Visual display showcase: grayscale palette, bouncing boxes, scrolling gradient, device info |
 | **Editor** | On-device file browser and code editor -- browse, create, edit, delete scripts without a computer |
@@ -241,6 +242,31 @@ The SSH client supports modern OpenSSH 10.x servers (which dropped legacy DH key
 - **Ctrl+C**: Works for interrupting remote commands. For high-output programs like `top`, you may need to press Ctrl+C rapidly a few times since the keyboard is polled between SSH packets
 - **Host keys**: First connection uses Trust-On-First-Use (TOFU) -- you confirm the fingerprint once, and it's saved
 - **Passwords**: Always encrypted at rest with a 4-8 digit PIN via AES-128-CBC. You will be prompted to set a PIN on first save
+
+### SSH Server Notes
+
+Run **SSH Server** to log in to the PicoCalc from another machine and get a live MicroPython REPL over the network. Reuses the SSH client's transport/crypto and adds the server side: an ECDSA-nistp256 host key, key-exchange signing, and `password` + `publickey` authentication.
+
+**Connect from your computer:**
+
+```bash
+ssh -p 2222 <user>@<pico-ip>      # password auth
+ssh -i ~/.ssh/id_ecdsa -p 2222 <user>@<pico-ip>   # public-key auth
+```
+
+The app's status screen shows the exact command (with the device IP) and the host-key fingerprint. Default port is **2222**.
+
+**Files (on the SD card):**
+- `sd/py_scripts/ssh_server.py` -- the SSH server application
+- `/sd/ssh_host_ecdsa.json` -- ECDSA host key (auto-generated on first run)
+- `/sd/ssh_server.json` -- username + salted password hash (set on first run)
+- `/sd/authorized_keys` -- optional OpenSSH-format public keys (one per line) for key auth
+
+**Notes:**
+- Single session at a time; the handshake takes ~1-2 s on the RP2350.
+- Requires WiFi (run **WiFiManager** first). Press **ESC** on the status screen to stop the server.
+- Supported client public keys: `ecdsa-sha2-nistp256` and `ssh-rsa`/`rsa-sha2-256`. Ed25519 client keys are not yet supported -- use an ECDSA/RSA key or password auth.
+- The session is a self-contained REPL (`eval`/`exec` with output streamed to your terminal); `exit()` or **Ctrl-D** disconnects.
 
 ---
 
@@ -379,6 +405,7 @@ docker run --rm \
 ## What's New in v3.0
 
 - **[MCP Server](mcp/MCP_README.md)** -- AI coding assistants (Claude Code, Claude Desktop, Cursor) can talk directly to the PicoCalc over USB via the Model Context Protocol -- run code, read/push files, check status, no dashboard needed
+- **SSH Server (two-way SSH)** -- SSH *into* the PicoCalc for a MicroPython REPL over WiFi, alongside the existing SSH client. ECDSA-nistp256 host key, ECDH key exchange, password + public-key auth (`ssh -p 2222 user@pico-ip`)
 - **[Synth 4.0](SYNTH.md)** -- ground-up rewrite with 4 instruments (Piano, Organ, Strings, Synth), QWERTY piano keyboard, ADSR envelope, arpeggiator, 16-step sequencer, LFO, presets, stereo harmonic enrichment
 - **Dashboard eject button** -- sends 7-second countdown to device screen, then reboots to menu for safe USB unplug
 - **Dashboard side-by-side diff** -- click a modified file to see device vs local changes color-coded in a split view
