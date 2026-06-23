@@ -523,6 +523,17 @@ def serve_static(filepath):
     return static_file(filepath, root=str(Path(__file__).parent / "static"))
 
 
+@app.route("/favicon.ico")
+def favicon():
+    # Serve a favicon if one is bundled, otherwise return an empty 204 so the
+    # browser stops logging a 404 on every page load. No external request.
+    fav = Path(__file__).parent / "static" / "favicon.ico"
+    if fav.exists():
+        return static_file("favicon.ico", root=str(fav.parent))
+    response.status = 204
+    return ""
+
+
 # --- API: Device ---
 
 @app.route("/api/device")

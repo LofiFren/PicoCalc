@@ -55,17 +55,53 @@ def initsd(debug=True):
         except:
             pass
         
-        # Initialize the SD card
-        if debug:
-            print("Creating SD card object...")
-        sd = sdcard.SDCard(spi, cs)
-        
-        if debug:
-            print("Mounting SD card to /sd...")
-        
-        # Mount the SD card
-        os.mount(sd, '/sd')
-        
+        # Mount with retries. On a cold power-up the card may not be ready
+        # within the first attempt; a single mount can also "succeed" against
+        # internal flash (statvfs reports a few MB) before the card responds.
+        # Retry with backoff and validate capacity (>100MB) before accepting.
+        sd = None
+        attempts = 4
+        for attempt in range(1, attempts + 1):
+            try:
+                if debug:
+                    print(f"Creating SD card object (attempt {attempt}/{attempts})...")
+                sd = sdcard.SDCard(spi, cs)
+
+                if debug:
+                    print("Mounting SD card to /sd...")
+                os.mount(sd, '/sd')
+
+                # Validate this is a real SD mount, not internal flash
+                stat = os.statvfs('/sd')
+                total_mb = (stat[0] * stat[2]) / (1024 * 1024)
+                if total_mb < 100:
+                    raise OSError(f"mounted volume only {total_mb:.1f}MB (card not ready)")
+
+                if debug:
+                    free_mb = (stat[0] * stat[3]) / (1024 * 1024)
+                    if total_mb >= 1024:
+                        print(f"SD card: {total_mb/1024:.1f} GB total, {free_mb/1024:.1f} GB free")
+                    else:
+                        print(f"SD card: {total_mb:.1f} MB total, {free_mb:.1f} MB free")
+                break
+
+            except Exception as e:
+                if debug:
+                    print(f"SD mount attempt {attempt} failed: {e}")
+                # Unmount any partial/internal-flash mount before retrying
+                try:
+                    os.umount('/sd')
+                except:
+                    pass
+                sd = None
+                if attempt < attempts:
+                    time.sleep_ms(300 * attempt)  # backoff: 300, 600, 900ms
+
+        if sd is None:
+            if debug:
+                print("SD card failed to mount after all attempts")
+            return None
+
         # Create py_scripts directory if it doesn't exist
         try:
             os.listdir('/sd/py_scripts')
@@ -79,32 +115,12 @@ def initsd(debug=True):
             except:
                 if debug:
                     print("Could not create py_scripts directory")
-        
-        # Get and display storage information
-        if debug:
-            try:
-                stat = os.statvfs('/sd')
-                block_size = stat[0]
-                total_blocks = stat[2]
-                free_blocks = stat[3]
-                
-                total_bytes = block_size * total_blocks
-                free_bytes = block_size * free_blocks
-                
-                if total_bytes > 1024*1024*1024:
-                    print(f"SD card: {total_bytes/(1024*1024*1024):.1f} GB total, "
-                          f"{free_bytes/(1024*1024*1024):.1f} GB free")
-                else:
-                    print(f"SD card: {total_bytes/(1024*1024):.1f} MB total, "
-                          f"{free_bytes/(1024*1024):.1f} MB free")
-            except Exception as e:
-                print(f"SD card mounted but couldn't get size info: {e}")
-        
+
         # Run garbage collection to free memory
         gc.collect()
-        
+
         return sd
-            
+
     except ImportError as e:
         if debug:
             print(f"sdcard module not found: {e}")
