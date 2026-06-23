@@ -237,6 +237,7 @@ The SSH client supports modern OpenSSH 10.x servers (which dropped legacy DH key
 
 **Usage:**
 - **Connect**: Select a saved profile or create a new connection (host, port, user, password)
+- **Net Info**: Press **I** on the menu to see this device's own IP, gateway, SSID, and MAC -- plus the ready-to-copy `ssh -p 2222 user@<ip>` command for SSHing back in
 - **Edit profiles**: Press **E** on a saved connection to update host/port/credentials
 - **Disconnect**: Press **ESC-ESC** to exit the terminal session
 - **Ctrl+C**: Works for interrupting remote commands. For high-output programs like `top`, you may need to press Ctrl+C rapidly a few times since the keyboard is polled between SSH packets

@@ -996,6 +996,38 @@ class SSHApp:
             utime.sleep_ms(50)
         self._drain()
 
+    def _net_info(self):
+        """Show this device's own network details (IP for SSHing in, etc.)."""
+        _clr()
+        _cur(False)
+        self._header('Network Info')
+        w = network.WLAN(network.STA_IF)
+        if w.isconnected():
+            ip, mask, gw, dns = w.ifconfig()
+            try:
+                ssid = w.config('essid')
+            except Exception:
+                ssid = '?'
+            try:
+                mac = ':'.join('%02x' % b for b in w.config('mac'))
+            except Exception:
+                mac = '?'
+            rows = [('Status', 'Connected', _GRN), ('SSID', ssid, _WHT),
+                    ('IP', ip, _CYN), ('Gateway', gw, _WHT),
+                    ('Subnet', mask, _WHT), ('DNS', dns, _WHT),
+                    ('MAC', mac, _WHT)]
+            r = 4
+            for label, val, col in rows:
+                _at(r, 4); _fg(_WHT, dim=True); _w('%-9s' % label); _rst()
+                _fg(col); _w(str(val)); _rst()
+                r += 1
+            _at(r + 1, 4); _fg(_YEL, bold=True); _w('SSH into this device:'); _rst()
+            _at(r + 2, 4); _fg(_GRN); _w('ssh -p 2222 user@%s' % ip); _rst()
+        else:
+            _at(4, 4); _fg(_RED); _w('Not connected to WiFi.'); _rst()
+            _at(5, 4); _fg(_WHT, dim=True); _w('Run WiFi Manager first.'); _rst()
+        self._wait()
+
     def draw_menu(self, sel):
         _clr()
         _cur(False)
@@ -1057,7 +1089,7 @@ class SSHApp:
         _w('@lofifren')
         _rst()
         self._footer(('\x18\x19', 'Nav'), ('ENTER', 'Go'),
-                      ('E', 'Edit'), ('D', 'Del'), ('ESC', 'Exit'))
+                      ('E', 'Edit'), ('D', 'Del'), ('I', 'Info'), ('ESC', 'Exit'))
         return items
 
     def run(self):
@@ -1112,6 +1144,9 @@ class SSHApp:
                     _save_profiles(self.profiles)
                     sel = max(0, sel - 1)
                     redraw = True
+            elif len(k) == 1 and k[0] in (ord('i'), ord('I')):
+                self._net_info()
+                redraw = True
             if redraw:
                 items = self.draw_menu(sel)
 
