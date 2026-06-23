@@ -172,6 +172,7 @@ MicroPython/
 |   |-- ProxiScan.py             BLE proximity scanner & fox hunt tool
 |   |-- WiFiManager.py           WiFi scanning & connection manager
 |   |-- picocalc_ollama.py       Local LLM client (Ollama)
+|   |-- picocalc_claude.py       Remote Claude client (Anthropic API)
 |   |-- brad.py                  WiFi utility library
 |   |-- demo.py                  Visual display showcase (grayscale, animation)
 |   \-- editor.py                On-device file browser + code editor
@@ -219,6 +220,7 @@ mcp/                                 MCP server for AI assistants
 | **SSH Client** | Secure shell client -- ECDH-SHA2-NISTP256 key exchange, AES-128-CTR + HMAC-SHA2-256 encryption, RSA host key verification (TOFU), saved connection profiles with PIN-encrypted passwords, interactive VT100 terminal (53x40) |
 | **SSH Server** | SSH *into* the PicoCalc for a MicroPython REPL -- ECDH-SHA2-NISTP256 key exchange, ECDSA-nistp256 host key, AES-128-CTR + HMAC-SHA2-256, password (salted-hash) and public-key (authorized_keys) auth |
 | **Ollama Client** | Chat with local LLMs over WiFi via Ollama |
+| **Remote Claude** | Chat with Claude (Anthropic API) over WiFi -- streaming replies, multi-turn, API-key or Max/Pro OAuth auth, PIN-encrypted credential. Default model `claude-opus-4-8` |
 | **Demo** | Visual display showcase: grayscale palette, bouncing boxes, scrolling gradient, device info |
 | **Editor** | On-device file browser and code editor -- browse, create, edit, delete scripts without a computer |
 
@@ -268,6 +270,25 @@ The app's status screen shows the exact command (with the device IP) and the hos
 - Requires WiFi (run **WiFiManager** first). Press **ESC** on the status screen to stop the server.
 - Supported client public keys: `ecdsa-sha2-nistp256` and `ssh-rsa`/`rsa-sha2-256`. Ed25519 client keys are not yet supported -- use an ECDSA/RSA key or password auth.
 - The session is a self-contained REPL (`eval`/`exec` with output streamed to your terminal); `exit()` or **Ctrl-D** disconnects.
+
+### Remote Claude Notes
+
+**Remote Claude** talks directly to the Anthropic Messages API (`api.anthropic.com`) over HTTPS and streams the reply token-by-token. Multi-turn conversation, `claude-opus-4-8` by default. Requires WiFi (run **WiFiManager** first) and firmware with `ssl`/mbedtls (the v1.27/v1.28 builds include it).
+
+**Two ways to authenticate** (chosen on first run):
+
+| Mode | Header | When to use |
+|------|--------|-------------|
+| **API key** (recommended) | `x-api-key` | Static credential, pay-as-you-go. Get one at [console.anthropic.com](https://console.anthropic.com). Best default for a handheld -- paste once, no expiry. |
+| **Max/Pro OAuth** (experimental) | `Authorization: Bearer` + `anthropic-beta: oauth-2025-04-20` | Use your Claude.ai subscription instead of API credits. Tokens are short-lived -- generate on your computer and re-paste via `/auth` when it stops working. |
+
+**Why API key is the default:** the OAuth token expires and needs a refresh flow that's awkward on a headless device, whereas an API key is a static credential you paste once.
+
+**Files (on the SD card):**
+- `sd/py_scripts/picocalc_claude.py` -- the app
+- `/sd/claude.json` -- auth mode + credential (PIN-encrypted via `secure_creds` when a PIN is set) + model
+
+**In-chat commands:** `/model <id>` switch model, `/reset` clear history, `/auth` re-enter credentials, `/help`, `/quit`.
 
 ---
 
@@ -407,6 +428,7 @@ docker run --rm \
 
 - **[MCP Server](mcp/MCP_README.md)** -- AI coding assistants (Claude Code, Claude Desktop, Cursor) can talk directly to the PicoCalc over USB via the Model Context Protocol -- run code, read/push files, check status, no dashboard needed
 - **SSH Server (two-way SSH)** -- SSH *into* the PicoCalc for a MicroPython REPL over WiFi, alongside the existing SSH client. ECDSA-nistp256 host key, ECDH key exchange, password + public-key auth (`ssh -p 2222 user@pico-ip`)
+- **Remote Claude** -- chat with Claude over WiFi straight from the device: streaming replies from the Anthropic API, multi-turn context, `claude-opus-4-8` default, and a choice of API-key or Max/Pro OAuth auth with the credential PIN-encrypted on the SD card
 - **[Synth 4.0](SYNTH.md)** -- ground-up rewrite with 4 instruments (Piano, Organ, Strings, Synth), QWERTY piano keyboard, ADSR envelope, arpeggiator, 16-step sequencer, LFO, presets, stereo harmonic enrichment
 - **Dashboard eject button** -- sends 7-second countdown to device screen, then reboots to menu for safe USB unplug
 - **Dashboard side-by-side diff** -- click a modified file to see device vs local changes color-coded in a split view
