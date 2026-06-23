@@ -284,6 +284,18 @@ The app's status screen shows the exact command (with the device IP) and the hos
 
 **Why API key is the default:** the OAuth token expires and needs a refresh flow that's awkward on a headless device, whereas an API key is a static credential you paste once.
 
+**Getting a Max/Pro OAuth token** (the setup screen also prints these steps):
+
+```bash
+brew install anthropics/tap/ant        # or use Claude Code (logs in the same way)
+ant auth login                         # sign in with your Claude subscription
+ant auth print-credentials --access-token   # copy the sk-ant-oat... value
+```
+
+Paste that token into the OAuth setup. It expires after a while -- refresh it the same way and re-enter via `/auth`.
+
+The app opens with a short Claude-branded intro (orange sunburst on black) drawn via a temporary palette swap, then drops into the chat terminal.
+
 **Files (on the SD card):**
 - `sd/py_scripts/picocalc_claude.py` -- the app
 - `/sd/claude.json` -- auth mode + credential (PIN-encrypted via `secure_creds` when a PIN is set) + model

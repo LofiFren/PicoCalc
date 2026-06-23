@@ -62,6 +62,77 @@ SYSTEM_PROMPT = (
 _pin = [None]                   # cached PIN for this session
 
 
+# --- Claude-branded splash (orange on black) --------------------------------
+
+# Default 16-entry display palette (byte-swapped RGB565) -- to restore after.
+_DEFAULT_LUT = (0x0000, 0x0080, 0x0004, 0x0084, 0x1000, 0x1080, 0x1004, 0x18C6,
+                0x1084, 0x00F8, 0xE007, 0xE0FF, 0x1F00, 0x1FF8, 0xFF07, 0xFFFF)
+
+
+def _rgb565_sw(r, g, b):
+    """Pack r,g,b into the display's byte-swapped RGB565 LUT format."""
+    v = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
+    return ((v & 0xFF) << 8) | (v >> 8)
+
+
+def _claude_splash():
+    """Show a Claude-style orange-on-black intro, then restore the palette."""
+    try:
+        import picocalc
+        import picocalcdisplay
+        import utime
+        import math
+        from array import array
+
+        d = picocalc.display
+        orange = _rgb565_sw(0xD9, 0x77, 0x57)   # Claude clay orange #D97757
+        light = _rgb565_sw(0xF0, 0xA8, 0x80)    # lighter tint for the center
+        pal = list(_DEFAULT_LUT)
+        pal[1] = orange
+        pal[2] = light
+        picocalcdisplay.setLUT(array('H', pal))
+
+        d.beginDraw()
+        d.fill(0)
+        cx, cy = 160, 116
+        # Anthropic-style sunburst: 12 tapered rays in orange (index 1)
+        for k in range(12):
+            a = k * math.pi / 6
+            ca, sa = math.cos(a), math.sin(a)
+            px, py = -sa, ca          # perpendicular, for thickness
+            for off in (-1, 0, 1):
+                x1 = int(cx + 18 * ca + off * px)
+                y1 = int(cy + 18 * sa + off * py)
+                x2 = int(cx + 54 * ca + off * px)
+                y2 = int(cy + 54 * sa + off * py)
+                d.line(x1, y1, x2, y2, 1)
+        d.fill_rect(cx - 5, cy - 5, 10, 10, 2)   # glowing center
+        # Wordmark + subtitle, centered (6px per glyph)
+        wm = "CLAUDE"
+        d.text(wm, cx - (len(wm) * 6) // 2, cy + 60, 1)
+        sub = "Remote Claude"
+        d.text(sub, cx - (len(sub) * 6) // 2, cy + 76, 2)
+        tag = "for PicoCalc"
+        d.text(tag, cx - (len(tag) * 6) // 2, cy + 90, 15)
+        d.show()
+        utime.sleep_ms(1500)
+    except Exception:
+        pass
+    finally:
+        # Always restore the default palette + hand the screen to the terminal
+        try:
+            import picocalcdisplay
+            from array import array
+            picocalcdisplay.setLUT(array('H', list(_DEFAULT_LUT)))
+        except Exception:
+            pass
+        try:
+            import picocalc
+            picocalc.terminal.wr("\033[2J\033[H")
+        except Exception:
+            pass
+
+
 # --- config ----------------------------------------------------------------
 
 def _load_cfg():
@@ -156,8 +227,12 @@ def first_run_setup():
     if mode == "api":
         secret = input("Paste your Anthropic API key (sk-ant-...): ").strip()
     else:
-        print("Paste a Claude.ai OAuth access token (Authorization: Bearer ...).")
-        print("Note: these expire; re-run setup to update when it stops working.")
+        print("\nMax/Pro OAuth token -- how to get one (on your computer):")
+        print("  1. brew install anthropics/tap/ant   (or use Claude Code)")
+        print("  2. ant auth login                    (log in w/ subscription)")
+        print("  3. ant auth print-credentials --access-token")
+        print("  4. copy the sk-ant-oat... value and paste it below")
+        print("These tokens expire -- re-run /auth to refresh when it stops.")
         secret = input("OAuth token: ").strip()
     if not secret:
         print("No credential entered. Aborting.")
@@ -373,6 +448,7 @@ def _explain_error(status, body):
 # --- chat loop --------------------------------------------------------------
 
 def main():
+    _claude_splash()
     print("=== Remote Claude (PicoCalc) ===")
     cfg = _load_cfg()
     if not cfg or not cfg.get("credential"):
