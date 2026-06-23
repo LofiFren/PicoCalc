@@ -294,7 +294,7 @@ ant auth print-credentials --access-token   # copy the sk-ant-oat... value
 
 Paste that token into the OAuth setup. It expires after a while -- refresh it the same way and re-enter via `/auth`.
 
-The app opens with a short Claude-branded intro (orange sunburst on black) drawn via a temporary palette swap, then drops into the chat terminal.
+The app is Claude-themed throughout: it opens with an orange sunburst intro on black (a temporary palette swap to true Claude clay `#D97757`), and the chat carries the same theme -- an orange `Claude>` label, light-orange prompt, and dim command hints -- restoring the default palette on exit.
 
 **Files (on the SD card):**
 - `sd/py_scripts/picocalc_claude.py` -- the app

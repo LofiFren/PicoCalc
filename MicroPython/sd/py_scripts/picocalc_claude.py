@@ -133,6 +133,43 @@ def _claude_splash():
             pass
 
 
+# --- theme (carry the orange intro through the whole app) -------------------
+
+# 256-color SGR into LUT slots. _theme_on() paints slot 1/2 Claude orange.
+_OR = "\033[38;5;1m"     # Claude orange
+_LT = "\033[38;5;2m"     # light orange
+_WH = "\033[38;5;15m"    # white
+_DM = "\033[38;5;8m"     # dim gray
+_ER = "\033[38;5;9m"     # error red
+_RS = "\033[0m"
+
+
+def _theme_on():
+    """Keep Claude orange in the display palette for the session."""
+    try:
+        import picocalcdisplay
+        from array import array
+        pal = list(_DEFAULT_LUT)
+        pal[1] = _rgb565_sw(0xD9, 0x77, 0x57)
+        pal[2] = _rgb565_sw(0xF0, 0xA8, 0x80)
+        picocalcdisplay.setLUT(array('H', pal))
+    except Exception:
+        pass
+
+
+def _theme_off():
+    try:
+        import picocalcdisplay
+        from array import array
+        picocalcdisplay.setLUT(array('H', list(_DEFAULT_LUT)))
+    except Exception:
+        pass
+
+
+def _w(s):
+    sys.stdout.write(s)
+
+
 # --- config ----------------------------------------------------------------
 
 def _load_cfg():
@@ -449,7 +486,6 @@ def _explain_error(status, body):
 
 def main():
     _claude_splash()
-    print("=== Remote Claude (PicoCalc) ===")
     cfg = _load_cfg()
     if not cfg or not cfg.get("credential"):
         cfg = first_run_setup()
@@ -464,70 +500,80 @@ def main():
         print("Could not unlock credential.")
         return
 
-    print("Model:", cfg.get("model", DEFAULT_MODEL),
-          "| Auth:", cfg.get("auth_mode", "api"))
-    print("Commands: /model <id>  /reset  /auth  /help  /quit")
-    print("-" * 40)
+    _theme_on()
+    try:
+        _w(_OR + "  CLAUDE " + _RS + _DM + " Remote\n" + _RS)
+        _w(_DM + "  " + cfg.get("model", DEFAULT_MODEL) + "  .  " +
+           cfg.get("auth_mode", "api") + " auth\n" + _RS)
+        _w(_DM + "  /models /model /reset /auth /help /quit\n" + _RS)
+        _w(_OR + "  " + "-" * 36 + "\n" + _RS)
 
-    history = []
-    while True:
-        try:
-            print("\nYou: ")
-            prompt = input().strip()
-        except KeyboardInterrupt:
-            print("\nBye!")
-            break
+        history = []
+        while True:
+            try:
+                _w("\n" + _LT + "You> " + _RS)
+                prompt = input().strip()
+            except KeyboardInterrupt:
+                _w("\n" + _OR + "Bye!\n" + _RS)
+                break
 
-        if not prompt:
-            continue
-        if prompt in ("/quit", "/q", "/exit"):
-            print("Bye!")
-            break
-        if prompt == "/help":
-            print("/models      pick a model from a menu")
-            print("/model <id>  switch model (default %s)" % DEFAULT_MODEL)
-            print("/reset       clear conversation history")
-            print("/auth        re-run credential setup")
-            print("/quit        exit")
-            continue
-        if prompt == "/reset":
-            history = []
-            print("History cleared.")
-            continue
-        if prompt == "/models":
-            cfg["model"] = _pick_model()
-            _save_cfg(cfg)
-            print("Model set to", cfg["model"])
-            continue
-        if prompt.startswith("/model"):
-            parts = prompt.split(None, 1)
-            if len(parts) == 2:
-                cfg["model"] = parts[1].strip()
+            if not prompt:
+                continue
+            if prompt in ("/quit", "/q", "/exit"):
+                _w(_OR + "Bye!\n" + _RS)
+                break
+            if prompt == "/help":
+                for line in (
+                    "/models      pick a model from a menu",
+                    "/model <id>  switch model (default %s)" % DEFAULT_MODEL,
+                    "/reset       clear conversation history",
+                    "/auth        re-run credential setup",
+                    "/quit        exit",
+                ):
+                    _w(_DM + line + "\n" + _RS)
+                continue
+            if prompt == "/reset":
+                history = []
+                _w(_DM + "History cleared.\n" + _RS)
+                continue
+            if prompt == "/models":
+                cfg["model"] = _pick_model()
                 _save_cfg(cfg)
-                print("Model set to", cfg["model"])
+                _w(_LT + "Model: " + cfg["model"] + "\n" + _RS)
+                continue
+            if prompt.startswith("/model"):
+                parts = prompt.split(None, 1)
+                if len(parts) == 2:
+                    cfg["model"] = parts[1].strip()
+                    _save_cfg(cfg)
+                    _w(_LT + "Model: " + cfg["model"] + "\n" + _RS)
+                else:
+                    _w(_DM + "Current model: " +
+                       cfg.get("model", DEFAULT_MODEL) + "\n" + _RS)
+                continue
+            if prompt == "/auth":
+                new = first_run_setup()
+                if new:
+                    cfg = new
+                    secret = _decrypt(cfg["credential"])
+                continue
+
+            history.append({"role": "user", "content": prompt})
+            # Cap context to bound request size / memory
+            if len(history) > MAX_HISTORY_TURNS * 2:
+                history = history[-MAX_HISTORY_TURNS * 2:]
+
+            _w("\n" + _OR + "Claude> " + _RS + _WH)
+            ok, info = send_message(cfg, secret, history,
+                                    lambda t: sys.stdout.write(t))
+            _w(_RS + "\n")
+            if ok:
+                history.append({"role": "assistant", "content": info})
             else:
-                print("Current model:", cfg.get("model", DEFAULT_MODEL))
-            continue
-        if prompt == "/auth":
-            new = first_run_setup()
-            if new:
-                cfg = new
-                secret = _decrypt(cfg["credential"])
-            continue
-
-        history.append({"role": "user", "content": prompt})
-        # Cap context to bound request size / memory
-        if len(history) > MAX_HISTORY_TURNS * 2:
-            history = history[-MAX_HISTORY_TURNS * 2:]
-
-        print("\nClaude: ", end="")
-        ok, info = send_message(cfg, secret, history, lambda t: sys.stdout.write(t))
-        print()
-        if ok:
-            history.append({"role": "assistant", "content": info})
-        else:
-            print("[" + info + "]")
-            history.pop()  # drop the user turn that errored
+                _w(_ER + "[" + info + "]\n" + _RS)
+                history.pop()  # drop the user turn that errored
+    finally:
+        _theme_off()
 
 
 if __name__ == "__main__":
