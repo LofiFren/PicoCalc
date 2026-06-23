@@ -1152,7 +1152,9 @@ class SynthUI:
     def _draw_set_page_content(self):
         e = self.engine
         y_start = 22
-        row_h = 20
+        # 14 params * 18px ends at ~274, leaving the preset strip clear of the
+        # footer bar at y=304 (row_h=20 previously overran it).
+        row_h = 18
 
         for i, (name, attr, unit, mn, mx, step) in enumerate(self.set_params):
             y = y_start + i * row_h
@@ -1208,9 +1210,6 @@ class PicoSynth:
 
         # Preset file listing cache
         self._preset_files = []
-
-        print("Synth 4.0 initialized")
-        print("Free mem:", gc.mem_free())
 
     def handle_input(self):
         if not picocalc.terminal:
@@ -1532,14 +1531,6 @@ class PicoSynth:
             print("Load error:", ex)
 
     def run(self):
-        print("Starting Synth 4.0...")
-        print("Tab: cycle pages | Piano keys: Z-M, S-J, Q-U")
-
-        # Play brief test tone
-        self.engine.note_on(69)  # A4
-        utime.sleep_ms(300)
-        self.engine.silence()
-
         self.ui.full_redraw()
         gc_counter = 0
 
@@ -1565,10 +1556,7 @@ class PicoSynth:
 
         self.engine.silence()
         self.display.fill(BG)
-        self.display.text("Synth 4.0 exited.", 10, 10, TXT)
         self.display.show()
-        utime.sleep_ms(500)
-        print("Synth 4.0 exited.")
 
 
 # -- Entry Point ------------------------------------------------------

@@ -139,7 +139,12 @@ class FileBrowser:
         _rst()
         _at(3, 2)
         _style(fg=_CYN, bold=True)
-        _w(self.path)
+        # Leave room for the "  (N items)" suffix; show the path tail if too long
+        path_budget = _W - 2 - len(f'  ({n} items)')
+        path_disp = self.path
+        if len(path_disp) > path_budget:
+            path_disp = '...' + path_disp[-(path_budget - 3):]
+        _w(path_disp)
         _rst()
         _style(dim=True)
         _w(f'  ({n} items)')
@@ -175,25 +180,28 @@ class FileBrowser:
                 if idx == self.sel:
                     _style(fg=_BLK, bg=_GRN, bold=True)
                     if is_dir:
-                        _w(f' \x10 {name:<{_W - 4}}')
+                        dname = name[:_W - 4]
+                        _w(f' \x10 {dname:<{_W - 4}}')
                     else:
                         size_str = _fmt_size(size)
                         name_w = _W - 4 - len(size_str) - 1
-                        _w(f' \x10 {name:<{name_w}} {size_str}')
+                        _w(f' \x10 {name[:name_w]:<{name_w}} {size_str}')
                 else:
                     _w('   ')
                     if is_dir:
                         _style(fg=_CYN, bold=True)
-                        _w(name)
+                        _w(name[:_W - 3])
                     elif name.endswith('.py'):
+                        size_str = _fmt_size(size)
                         _style(fg=_GRN)
-                        _w(name)
+                        _w(name[:_W - 3 - 2 - len(size_str)])
                         _rst()
                         _style(dim=True)
-                        _w(f'  {_fmt_size(size)}')
+                        _w(f'  {size_str}')
                     else:
+                        size_str = _fmt_size(size)
                         _style(dim=True)
-                        _w(f'{name}  {_fmt_size(size)}')
+                        _w(f'{name[:_W - 3 - 2 - len(size_str)]}  {size_str}')
                 _rst()
 
             # Scroll down indicator
@@ -454,11 +462,14 @@ def main():
             browser.path = '/'
         browser.run()
     except Exception as e:
-        _cursor(True)
-        _rst()
         print(f'Editor error: {e}')
         import sys
         sys.print_exception(e)
+    finally:
+        # Leave a clean, cursor-visible terminal for the menu
+        _cursor(True)
+        _rst()
+        _clr()
 
 if __name__ == '__main__':
     main()

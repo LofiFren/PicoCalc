@@ -712,29 +712,49 @@ class ProxiScan:
             self.waypoints.pop(0)
 
     def _calibrate(self):
-        """4-point antenna calibration. Enters text mode temporarily."""
-        was_scanning = self.scanning
-        if was_scanning:
-            # Keep scanning for RSSI samples during calibration
-            pass
-
-        self.display.fill(C_BLK)
-        self.display.text("ANTENNA CALIBRATION", 50, 10, C_WHT)
-        self.display.text("Point antenna in each", 30, 35, C_MD)
-        self.display.text("direction, press ENTER", 30, 50, C_MD)
-        self.display.text("to sample. Q to finish.", 30, 65, C_MD)
-        self.display.show()
-
+        """4-point antenna calibration, drawn on-screen with key polling."""
         directions = [("North", 0), ("East", 90), ("South", 180), ("West", 270)]
         self.bearing_cal = {}
 
+        def _draw(aim, status, status_c=C_MD):
+            d = self.display
+            d.fill(C_BLK)
+            d.text("ANTENNA CALIBRATION", 50, 10, C_WHT)
+            d.text("Point antenna in each", 30, 35, C_MD)
+            d.text("direction, then ENTER", 30, 50, C_MD)
+            d.text("to sample. Q to finish.", 30, 65, C_MD)
+            if aim:
+                d.text("Aim:", 30, 100, C_MD)
+                d.text(aim, 78, 100, C_WHT)
+            d.text(status, 30, 130, status_c)
+            ry = 160
+            for nm, bn in directions:
+                if bn in self.bearing_cal:
+                    d.text(f"{nm}: {self.bearing_cal[bn]:.0f} dBm", 30, ry, C_GR)
+                    ry += 14
+            d.text("ENTER sample   Q finish", 30, 290, C_DK)
+            d.show()
+
+        def _wait_keys():
+            self.check_key()
+            while True:
+                k = self.check_key()
+                if not k:
+                    utime.sleep_ms(30)
+                    continue
+                if k in (b'\r\n', b'\r', b'\n'):
+                    return 'enter'
+                if len(k) == 1 and k[0] in (ord('q'), ord('Q')):
+                    return 'q'
+                if k == KEY_ESC or (len(k) == 1 and k[0] == 0x1b):
+                    return 'esc'
+
         for name, bearing in directions:
-            print(f"\nPoint antenna {name} ({bearing})")
-            cmd = input("ENTER=sample, Q=done: ").strip().lower()
-            if cmd == 'q':
+            _draw(name, "Press ENTER to sample")
+            if _wait_keys() != 'enter':
                 break
 
-            print(f"Sampling {name}...")
+            _draw(name, "Sampling...", C_LT)
             samples = []
             start = utime.ticks_ms()
             while utime.ticks_diff(utime.ticks_ms(), start) < 3000:
@@ -743,9 +763,7 @@ class ProxiScan:
                 utime.sleep_ms(200)
 
             if samples:
-                avg = sum(samples) / len(samples)
-                self.bearing_cal[bearing] = avg
-                print(f"{name}: {avg:.1f} dBm ({len(samples)} samples)")
+                self.bearing_cal[bearing] = sum(samples) / len(samples)
 
         # Calculate confidence
         if len(self.bearing_cal) >= 2:
@@ -763,11 +781,16 @@ class ProxiScan:
                 self.confidence = 20
             strongest = max(self.bearing_cal.items(), key=lambda x: x[1])
             self.bearing = strongest[0]
-            print(f"\nBearing: {self.bearing} Confidence: {self.confidence}%")
+            result = f"Bearing {int(self.bearing)}  Conf {self.confidence}%"
         else:
-            print("\nNot enough samples")
+            result = "Not enough samples"
 
-        input("\nPress Enter to return...")
+        _draw("", result, C_WHT)
+        self.display.text("Press any key to return", 30, 250, C_MD)
+        self.display.show()
+        self.check_key()
+        while not self.check_key():
+            utime.sleep_ms(30)
 
     def _toggle_audio(self):
         if not self.has_audio:

@@ -530,7 +530,6 @@ class ScanScreen:
 
                 if idx == self.sel:
                     _style(fg=_BLK, bg=_GRN, bold=True)
-                    lock = ' ' if auth == 0 else '\x0ey\x0f'
                     _w(f' {ssid_disp:<22} {rssi:>4}dBm Ch{ch:<2} {_sec_str(auth):<5}')
                     _cll()
                 else:
@@ -911,10 +910,10 @@ class NetworkAnalysis:
             _style(fg=col); _w('\x0e' + 'a' * bar_len + '\x0f'); _rst()
             _w(f' {count} ({pct}%)')
 
-        # Security
+        # Security (cap rows so HIGHLIGHTS/warning below can't drift into the footer)
         _at(14, 2); _style(fg=_CYN, bold=True); _w('SECURITY'); _rst()
         row = 15
-        for sec, count in sorted(sec_counts.items(), key=lambda x: -x[1]):
+        for sec, count in sorted(sec_counts.items(), key=lambda x: -x[1])[:6]:
             pct = count * 100 // total
             _at(row, 4)
             col = _YEL if sec == 'Open' or sec == 'WEP' else _GRN

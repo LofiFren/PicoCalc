@@ -926,7 +926,7 @@ class SSHApp:
                     pwd = ''
             if pwd:
                 _at(3, 3); _fg(_YEL)
-                _w(f'WiFi: {ssid[:40]}...')
+                _w(f'WiFi: {ssid[:40]}' + ('...' if len(ssid) > 40 else ''))
                 _rst()
                 wlan.disconnect()
                 utime.sleep_ms(300)
@@ -953,7 +953,7 @@ class SSHApp:
 
     def _header(self, title):
         _at(1, 1)
-        _fg(_BLK, bg=_BLK)
+        _fg(_WHT, bg=_BLU)
         _w(' ' * _W)
         _at(1, 2)
         _fg(_YEL, bold=True)
@@ -1203,7 +1203,7 @@ class SSHApp:
         _fg(_YEL, bold=True)
         _w('CONNECTION DETAILS')
         _rst()
-        _at(4, 2)
+        _at(5, 2)
         _fg(_WHT, dim=True)
         _w('ESC-ESC to cancel')
         _rst()
@@ -1492,6 +1492,7 @@ class SSHApp:
             _w(f"\r\n[Error: {e}]\r\n")
         finally:
             micropython.kbd_intr(3)
+            _rst()
             _cur(False)
             self._wait()
 

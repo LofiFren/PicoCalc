@@ -31,13 +31,6 @@ COLOR_LIGHT = 12
 COLOR_WHITE = 15
 
 
-def draw_big_char(display, ch, x, y, color, size=4):
-    """Draw a character scaled up by size factor."""
-    # Render at 1x into a tiny area, then read pixels back
-    # Instead, use a simple bitmap font for digits and operators
-    pass
-
-
 # 5x7 bitmap font for digits 0-9 and + - =
 # Each digit is 5 columns wide, 7 rows tall, stored as 7 bytes (each byte = 1 row, 5 bits)
 FONT = {
@@ -341,7 +334,7 @@ class MathKids:
         d.text(streak_txt, 180, 4, COLOR_LIGHT)
         # Draw earned stars in top-right
         for i in range(min(self.stars, 5)):
-            draw_star(d, 280 + i * 10, 6, 3, COLOR_WHITE)
+            draw_star(d, 270 + i * 10, 6, 3, COLOR_WHITE)
 
         # Level indicator
         lvl_txt = ["EASY", "MEDIUM", "HARD"]
@@ -425,7 +418,7 @@ class MathKids:
 
         if self.state == "CORRECT":
             # Happy message
-            d.text(self.feedback_msg, (320 - len(self.feedback_msg) * 8) // 2, 245, COLOR_WHITE)
+            d.text(self.feedback_msg, (320 - len(self.feedback_msg) * 6) // 2, 245, COLOR_WHITE)
 
             # Draw some stars as celebration
             for i in range(3):
@@ -437,7 +430,7 @@ class MathKids:
             d.text("Not quite!", 120, 240, COLOR_LIGHT)
             # Show the right answer
             ans_str = str(self.num_a) + " " + self.op + " " + str(self.num_b) + " = " + self.feedback_msg
-            d.text(ans_str, (320 - len(ans_str) * 8) // 2, 260, COLOR_WHITE)
+            d.text(ans_str, (320 - len(ans_str) * 6) // 2, 260, COLOR_WHITE)
             d.text("Press any key...", 96, 300, COLOR_GRAY)
 
         d.show()
@@ -451,7 +444,7 @@ class MathKids:
 
         lvl_names = ["Easy", "Medium", "Hard"]
         msg = "Level " + str(self.level) + ": " + lvl_names[self.level - 1]
-        d.text(msg, (320 - len(msg) * 8) // 2, 100, COLOR_LIGHT)
+        d.text(msg, (320 - len(msg) * 6) // 2, 100, COLOR_LIGHT)
 
         # Stars
         for i in range(7):
@@ -519,7 +512,6 @@ class MathKids:
 def main():
     gc.collect()
     try:
-        print("Free memory:", gc.mem_free(), "bytes")
         app = MathKids()
         app.run()
     except Exception as e:

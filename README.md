@@ -385,8 +385,10 @@ docker run --rm \
 - **Dashboard new script** -- "+" button creates scripts from a starter template, opens in editor
 - **Smart file clicks** -- modified files auto-show diff, clean files open in editor
 - **Adaptive polling** -- 1.5s when disconnected for fast reconnection, 5s when connected
-- **Firmware v1.27.0 option** -- patched build with USB fix and BLE pairing APIs (see `firmware/Dockerfile.v127`)
-- **USB regression fix** -- discovered and patched MicroPython RP2350 USB-CDC bug affecting v1.26.0+ ([#18990](https://github.com/micropython/micropython/issues/18990))
+- **Firmware v1.28.0 (native USB)** -- recommended build for Pico 2W; v1.28.0 fixes the RP2350 USB-CDC regression upstream so no patch is needed (`firmware/Dockerfile.v128`). The patched v1.27.0 build remains available as an alternative.
+- **USB regression fixed** -- discovered and root-caused the MicroPython RP2350 USB-CDC bug affecting v1.26.0/v1.27.0 ([#18990](https://github.com/micropython/micropython/issues/18990)); v1.28.0 resolves it natively
+- **SD cold-start hardening** -- `enhanced_sd.initsd()` retries the mount with backoff and validates capacity, so a slow card on first boot no longer comes up as internal flash
+- **App UI polish pass** -- reviewed every bundled app: fixed the SSH header bar, on-screen ProxiScan antenna calibration (no more blind REPL prompts), editor long-name truncation, synth SET-page footer overlap, math-app centering, and removed leftover debug output
 - **Audio quality** -- anti-click retrigger, soft duty ceiling, per-instrument stereo overtones, frequency-scaled decay
 - **Removed PicoBLE** -- old BLE file transfer removed (dashboard handles file transfer over USB)
 

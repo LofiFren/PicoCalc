@@ -32,7 +32,8 @@ class Balloon:
         return True
 
     def draw_sky(self):
-        for y in range(0, 200, 10):
+        # Fill down to the horizon (ground starts at y=255) so no black band shows
+        for y in range(0, 260, 10):
             shade = max(1, 3 - y // 80)
             self.display.fill_rect(0, y, 320, 10, shade)
 
