@@ -17,4 +17,36 @@ MicroPython/sd/py_scripts/test.py
 MicroPython/sd/py_scripts/picocalc_client_config.json
 MicroPython/sd/py_scripts/pixel_pal.py
 MicroPython/sd/py_scripts/train.py
-MicroPython/sd/ssh_known_hosts.json
+
+# ---------------------------------------------------------------------------
+# User-generated credentials & secrets -- NEVER commit (public repo).
+# Every app regenerates these on first use, so they don't belong in git.
+# Anchored to the SD mirror and globbed (**/) for safety.
+# ---------------------------------------------------------------------------
+# WiFi credentials (WiFiManager)
+wifi.json
+**/wifi.json
+# Credential-encryption PIN hash (secure_creds)
+cred_pin.json
+**/cred_pin.json
+# Anthropic API key / Claude.ai OAuth token (Remote Claude)
+claude.json
+**/claude.json
+# SSH client: saved profiles (encrypted passwords) + trusted host keys
+ssh_profiles.json
+**/ssh_profiles.json
+ssh_known_hosts.json
+**/ssh_known_hosts.json
+# SSH server: private host key, login hash, authorized public keys
+ssh_host_ecdsa.json
+**/ssh_host_ecdsa.json
+ssh_server.json
+**/ssh_server.json
+authorized_keys
+**/authorized_keys
+# Generic key/secret material
+*.pem
+*.key
+# User scan / log data (ProxiScan, sub-GHz)
+MicroPython/sd/scan_logs/
+MicroPython/sd/subghz_logs/

@@ -276,6 +276,14 @@
     box-shadow: 0 0 4px var(--amber);
     cursor: pointer;
   }
+  /* --- Not-on-device (new file) highlight: green, distinct from amber modified --- */
+  .fl-item.missing .fl-name { color: var(--green); }
+  .fl-item.missing .fl-icon { color: var(--green); }
+  .fl-new-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green); flex-shrink: 0;
+    box-shadow: 0 0 4px var(--green);
+  }
 
   /* --- Resize handles --- */
   .resize-h {
@@ -538,10 +546,10 @@ async function buildLocalTree() {
     const fli = document.createElement('li');
     const item = document.createElement('div');
     item.dataset.path = f.name;
-    const needsPush = f.status === 'modified' || f.status === 'missing';
-    item.className = 'fl-item' + (needsPush ? ' modified' : '');
+    const cls = f.status === 'modified' ? ' modified' : (f.status === 'missing' ? ' missing' : '');
+    item.className = 'fl-item' + cls;
     let indicator = '';
-    if (f.status === 'missing') indicator = '<span class="fl-modified-dot" title="Not on device"></span>';
+    if (f.status === 'missing') indicator = '<span class="fl-new-dot" title="Not on device -- push to add"></span>';
     else if (f.status === 'modified') indicator = '<span class="fl-modified-dot" title="Modified -- click to diff"></span>';
     const fname = f.name.split('/').pop();
     item.innerHTML = `<span class="fl-icon">&#x25AB;</span><span class="fl-name">${fname}</span>${indicator}<span class="fl-size">${fmt(f.size)}</span><button class="btn sm" style="margin-left:6px" onclick="event.stopPropagation(); pushFile('${f.name}')">push</button><button class="btn sm" onclick="event.stopPropagation(); openLocalFile('${f.name}')">edit</button><button class="btn sm" style="color:var(--red)" onclick="event.stopPropagation(); deleteLocalFile('${f.name}')">del</button>`;
