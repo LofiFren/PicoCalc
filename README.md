@@ -178,8 +178,10 @@ MicroPython/
 |-- firmware/                    Prebuilt UF2 firmware images
 |   |-- picocalc_micropython_pico2w.uf2   (v1.25.0, stable)
 |   |-- picocalc_v127_pico2w.uf2          (v1.27.0, patched)
+|   |-- picocalc_v128_pico2w.uf2          (v1.28.0, native USB)
 |   |-- Dockerfile                         Build for v1.25.0
 |   |-- Dockerfile.v127                    Build for v1.27.0 + USB fix
+|   |-- Dockerfile.v128                    Build for v1.28.0 (no USB patch)
 |   \-- USB_REGRESSION_FIX.md              RP2350 USB bug report
 |-- micropython.cmake            Top-level build config for C modules
 |-- picocalcdisplay/             C display driver (compiled into firmware)
@@ -298,14 +300,33 @@ docker run --rm \
            cp build-RPI_PICO2_W/firmware.uf2 /out/picocalc_v127_pico2w.uf2"
 ```
 
+### Option C: v1.28.0 Build (native USB -- recommended for Pico 2W)
+
+MicroPython v1.28.0 fixes the RP2350 USB-CDC regression upstream, so **no USB patch is needed** -- USB enumerates natively. This build keeps the BLE pairing APIs. Recommended if the patched v1.27 build fails to enumerate on your USB host (see issue #11).
+
+```bash
+# 1. Build the Docker image (one-time, ~5 min)
+docker build -t picocalc-v128 -f MicroPython/firmware/Dockerfile.v128 MicroPython/firmware/
+
+# 2. Compile firmware (~3 min)
+docker run --rm \
+  -v $(pwd)/MicroPython:/picocalc \
+  -v $(pwd)/MicroPython/firmware:/out \
+  picocalc-v128 \
+  bash -c "make BOARD=RPI_PICO2_W USER_C_MODULES=/picocalc/micropython.cmake -j\$(nproc) && \
+           cp build-RPI_PICO2_W/firmware.uf2 /out/picocalc_v128_pico2w.uf2"
+```
+
 ### Firmware Files
 
 | File | MicroPython | Notes |
 |------|-------------|-------|
 | `picocalc_micropython_pico2w.uf2` | v1.25.0-preview | Stable default, all apps work |
-| `picocalc_v127_pico2w.uf2` | v1.27.0 (patched) | BLE pairing APIs, USB fix applied |
+| `picocalc_v127_pico2w.uf2` | v1.27.0 (patched) | BLE pairing APIs, manual USB wrap (marginal on some hosts) |
+| `picocalc_v128_pico2w.uf2` | v1.28.0 | Native USB (no patch), BLE pairing APIs -- recommended |
 | `Dockerfile` | v1.25.0-preview | Standard build |
 | `Dockerfile.v127` | v1.27.0 + patches | USB fix + BLE security enabled |
+| `Dockerfile.v128` | v1.28.0 + BLE patch | Native USB, BLE security enabled |
 | `USB_REGRESSION_FIX.md` | -- | Bug analysis and patch details |
 
 ---
@@ -342,7 +363,7 @@ docker run --rm \
 
 **USB REPL not connecting (no serial port appears):**
 - Firmware must be built with `BOARD=RPI_PICO2_W`. Default `RPI_PICO` is the wrong chip.
-- MicroPython v1.26.0, v1.27.0, and v1.28.0+ all have a USB regression on RP2350 ([#18990](https://github.com/micropython/micropython/issues/18990)). Use either the v1.25.0-preview firmware or the patched v1.27.0 (`picocalc_v127_pico2w.uf2`).
+- MicroPython v1.26.0 and v1.27.0 have a USB-CDC regression on RP2350 ([#18990](https://github.com/micropython/micropython/issues/18990)); the prebuilt v1.27.0 carries a manual `--wrap=dcd_event_handler` patch, but that workaround is marginal on some USB host controllers (see issue #11). **v1.28.0 fixes the regression natively** -- if v1.27 fails to enumerate, use `picocalc_v128_pico2w.uf2`. The v1.25.0-preview firmware also has no regression.
 - Check with `ls /dev/tty.usbmodem*` (macOS) or `ls /dev/ttyACM*` (Linux).
 
 **Thonny shows `KeyboardInterrupt` traceback on connect:**
