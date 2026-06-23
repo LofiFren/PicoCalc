@@ -273,7 +273,7 @@ The app's status screen shows the exact command (with the device IP) and the hos
 
 ### Remote Claude Notes
 
-**Remote Claude** talks directly to the Anthropic Messages API (`api.anthropic.com`) over HTTPS and streams the reply token-by-token. Multi-turn conversation, `claude-opus-4-8` by default. Requires WiFi (run **WiFiManager** first) and firmware with `ssl`/mbedtls (the v1.27/v1.28 builds include it).
+**Remote Claude** talks directly to the Anthropic Messages API (`api.anthropic.com`) over HTTPS and streams the reply token-by-token. Multi-turn conversation. First-run setup includes a **model picker** -- Opus 4.8 (default, most capable), Sonnet 4.6 (balanced), Haiku 4.5 (fastest/cheapest), or any model id you type -- and you can switch any time with `/model`. Requires WiFi (run **WiFiManager** first) and firmware with `ssl`/mbedtls (the v1.27/v1.28 builds include it).
 
 **Two ways to authenticate** (chosen on first run):
 

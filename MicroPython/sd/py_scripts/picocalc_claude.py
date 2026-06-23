@@ -44,6 +44,12 @@ OAUTH_BETA = "oauth-2025-04-20"
 CFG_PATH = "/sd/claude.json"
 WIFI_PATH = "/sd/wifi.json"
 DEFAULT_MODEL = "claude-opus-4-8"
+# (id, short label) -- offered in the first-run picker. Default is opus 4.8.
+MODELS = [
+    ("claude-opus-4-8", "Opus 4.8   most capable (default)"),
+    ("claude-sonnet-4-6", "Sonnet 4.6 balanced speed/intelligence"),
+    ("claude-haiku-4-5", "Haiku 4.5  fastest & cheapest"),
+]
 DEFAULT_MAX_TOKENS = 1024
 MAX_HISTORY_TURNS = 12          # cap context sent each request (memory bound)
 
@@ -123,6 +129,23 @@ def _maybe_encrypt(secret):
     return secret
 
 
+def _pick_model():
+    print("\nModel:")
+    for i, (mid, label) in enumerate(MODELS, 1):
+        print("  %d. %s" % (i, label))
+    print("  (or type a model id)")
+    choice = input("Choose 1-%d [1]: " % len(MODELS)).strip()
+    if not choice:
+        return MODELS[0][0]
+    if choice.isdigit():
+        n = int(choice)
+        if 1 <= n <= len(MODELS):
+            return MODELS[n - 1][0]
+        print("Out of range; using default.")
+        return MODELS[0][0]
+    return choice  # custom model id
+
+
 def first_run_setup():
     print("\n=== Remote Claude setup ===")
     print("Auth mode:")
@@ -139,8 +162,9 @@ def first_run_setup():
     if not secret:
         print("No credential entered. Aborting.")
         return None
+    model = _pick_model()
     stored = _maybe_encrypt(secret)
-    cfg = {"auth_mode": mode, "credential": stored, "model": DEFAULT_MODEL}
+    cfg = {"auth_mode": mode, "credential": stored, "model": model}
     _save_cfg(cfg)
     print("Saved to", CFG_PATH)
     return cfg
