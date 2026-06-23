@@ -408,6 +408,7 @@ def main():
             print("Bye!")
             break
         if prompt == "/help":
+            print("/models      pick a model from a menu")
             print("/model <id>  switch model (default %s)" % DEFAULT_MODEL)
             print("/reset       clear conversation history")
             print("/auth        re-run credential setup")
@@ -416,6 +417,11 @@ def main():
         if prompt == "/reset":
             history = []
             print("History cleared.")
+            continue
+        if prompt == "/models":
+            cfg["model"] = _pick_model()
+            _save_cfg(cfg)
+            print("Model set to", cfg["model"])
             continue
         if prompt.startswith("/model"):
             parts = prompt.split(None, 1)

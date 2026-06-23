@@ -288,7 +288,7 @@ The app's status screen shows the exact command (with the device IP) and the hos
 - `sd/py_scripts/picocalc_claude.py` -- the app
 - `/sd/claude.json` -- auth mode + credential (PIN-encrypted via `secure_creds` when a PIN is set) + model
 
-**In-chat commands:** `/model <id>` switch model, `/reset` clear history, `/auth` re-enter credentials, `/help`, `/quit`.
+**In-chat commands:** `/models` pick from a menu, `/model <id>` set a specific model, `/reset` clear history, `/auth` re-enter credentials, `/help`, `/quit`.
 
 ---
 
