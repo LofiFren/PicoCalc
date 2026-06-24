@@ -985,6 +985,111 @@ walk('/sd')
 
 # --- Main ---
 
+def port_in_use(host, port):
+    """Return True if something is already listening on host:port."""
+    import socket
+    target = "127.0.0.1" if host in ("", "0.0.0.0", "::") else host
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((target, port)) == 0
+
+
+def find_listener_pids(port):
+    """Find PIDs listening on the given TCP port. Cross-platform, best effort."""
+    pids = []
+    if os.name == "nt":
+        try:
+            out = subprocess.check_output(
+                ["netstat", "-ano", "-p", "TCP"],
+                text=True, stderr=subprocess.DEVNULL)
+        except Exception:
+            return pids
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 5 and parts[0].upper() == "TCP" \
+                    and parts[3].upper() == "LISTENING" \
+                    and parts[1].endswith(f":{port}"):
+                pid = parts[-1]
+                if pid.isdigit():
+                    pids.append(int(pid))
+    elif shutil.which("lsof"):
+        try:
+            out = subprocess.check_output(
+                ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                text=True, stderr=subprocess.DEVNULL)
+            pids = [int(x) for x in out.split() if x.strip().isdigit()]
+        except subprocess.CalledProcessError:
+            pids = []
+    elif shutil.which("ss"):
+        try:
+            out = subprocess.check_output(
+                ["ss", "-ltnp", f"sport = :{port}"],
+                text=True, stderr=subprocess.DEVNULL)
+            pids = [int(m) for m in re.findall(r"pid=(\d+)", out)]
+        except Exception:
+            pids = []
+    return sorted(set(pids))
+
+
+def kill_pid(pid):
+    """Terminate a process by PID. Cross-platform, returns True on success."""
+    if os.name == "nt":
+        rc = subprocess.call(
+            ["taskkill", "/PID", str(pid), "/F"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return rc == 0
+    import signal
+    import time
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    for _ in range(20):
+        time.sleep(0.1)
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return True
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+    return True
+
+
+def handle_existing_instance(host, port):
+    """If the port is taken, offer to kill the old dashboard. Returns True to proceed."""
+    if not port_in_use(host, port):
+        return True
+    print(f"\n  Port {port} is already in use -- a dashboard may still be running.")
+    pids = find_listener_pids(port)
+    if not pids:
+        print("  Could not identify the process holding the port.")
+        print(f"  Free it manually or start with a different port: --port {port + 1}\n")
+        return False
+    pid_list = ", ".join(str(p) for p in pids)
+    print(f"  Found existing process: PID {pid_list}")
+    try:
+        answer = input("  Kill it and take over the port? [Y/n] ").strip().lower()
+    except EOFError:
+        answer = "y"
+    if answer not in ("", "y", "yes"):
+        print(f"  Left it running. Open http://localhost:{port} to use it.\n")
+        return False
+    ok = all(kill_pid(p) for p in pids)
+    import time
+    for _ in range(20):
+        if not port_in_use(host, port):
+            print("  Old dashboard stopped. Starting a fresh one...\n")
+            return True
+        time.sleep(0.1)
+    print("  Could not free the port. Try killing it manually:")
+    print(f"    PID(s): {pid_list}\n")
+    return False
+
+
 def main():
     global PORT, HOST
 
@@ -1009,6 +1114,10 @@ def main():
             print(f"Unknown option: {args[i]}")
             print(__doc__)
             sys.exit(1)
+
+    # If an old dashboard is holding the port, offer to kill it
+    if not handle_existing_instance(HOST, PORT):
+        sys.exit(1)
 
     url = f"http://localhost:{PORT}"
     print(f"\n  PicoCalc Dashboard")
