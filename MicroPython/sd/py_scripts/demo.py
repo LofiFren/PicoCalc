@@ -1,3 +1,4 @@
+# picocalc-app: Demo | Graphics | display & color showcase
 """
 Demo - Visual display showcase for PicoCalc v2.0
 Features:

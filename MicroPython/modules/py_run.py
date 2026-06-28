@@ -67,6 +67,54 @@ def _box_v():
 
 _HIDDEN_LIBS = {'secure_creds.py', '__init__.py'}
 
+# Category display order (unknown categories sort after these, before 'Other').
+_CAT_ORDER = ['Music', 'Games', 'Network', 'Graphics', 'Tools', 'Apps', 'Other']
+
+
+def _parse_meta(full_path, filename):
+    """Inspect a .py file and decide if/how it appears in the menu.
+
+    Opt-in metadata header (anywhere in the first lines):
+        # picocalc-app: Display Name | Category | one-line description
+        # picocalc-hide        (force-hide a file)
+
+    Files without a header still appear (under 'Other') if they look runnable
+    (define main()/main_menu() or an __main__ guard); pure libraries are hidden.
+    Returns (name, category, desc) or None to hide.
+    """
+    try:
+        with open(full_path) as f:
+            content = f.read()
+    except Exception:
+        return None
+    name = None
+    category = None
+    desc = ''
+    for line in content.split('\n')[:40]:
+        s = line.strip()
+        if s.startswith('# picocalc-hide'):
+            return None
+        if s.startswith('# picocalc-app:'):
+            body = s.split(':', 1)[1].strip()
+            parts = [p.strip() for p in body.split('|')]
+            if parts and parts[0]:
+                name = parts[0]
+            if len(parts) > 1 and parts[1]:
+                category = parts[1]
+            if len(parts) > 2:
+                desc = parts[2]
+            break
+    runnable = ('__main__' in content or '\ndef main(' in content
+                or '\ndef main_menu(' in content)
+    if name is None and not runnable:
+        return None  # pure library: hide
+    if name is None:
+        name = filename[:-3] if filename.endswith('.py') else filename
+    if category is None:
+        category = 'Other'
+    return (name, category, desc)
+
+
 def find_py_files(base_path="/sd"):
     py_files = []
     try:
@@ -118,15 +166,29 @@ class _Menu:
     def __init__(self):
         self.key_buf = bytearray(10)
         self.scripts = []
+        self.meta = {}
         self.sel = 0
         self.scroll = 0
 
     def refresh_scripts(self):
-        raw = find_py_files()
-        # Filter out archive dirs, sort
-        self.scripts = sorted([s for s in raw
-                               if '/archive/' not in s
-                               and '/temp_archive/' not in s])
+        raw = [s for s in find_py_files()
+               if '/archive/' not in s and '/temp_archive/' not in s]
+        self.meta = {}
+        apps = []
+        for path in raw:
+            filename = path.split('/')[-1] + '.py'
+            meta = _parse_meta('/sd/' + path + '.py', filename)
+            if meta is None:
+                continue        # hidden library
+            self.meta[path] = meta
+            apps.append(path)
+
+        def _key(p):
+            name, cat, desc = self.meta[p]
+            ci = _CAT_ORDER.index(cat) if cat in _CAT_ORDER else len(_CAT_ORDER) - 1
+            return (ci, cat.lower(), name.lower())
+
+        self.scripts = sorted(apps, key=_key)
         if self.sel >= len(self.scripts):
             self.sel = max(0, len(self.scripts) - 1)
 
@@ -145,8 +207,9 @@ class _Menu:
         return ram_kb, sd
 
     def _display_name(self, path):
-        """Clean display name from script path."""
-        return path.replace('py_scripts/', '')
+        """Display name from metadata, falling back to the cleaned path."""
+        m = self.meta.get(path)
+        return m[0] if m else path.replace('py_scripts/', '')
 
     def draw(self):
         ram, sd = self._status()
@@ -176,60 +239,82 @@ class _Menu:
         _box_h(_W)
         _rst()
 
-        # -- Section header ---------------------------------
-        _at(3, 2)
-        _style(fg=_CYN, bold=True)
-        _w('SCRIPTS')
-        _rst()
-        if n > 0:
-            _style(dim=True)
-            _w(f'  ({n})')
-            _rst()
-
-        # -- Script list ------------------------------------
+        # -- App list, grouped by category ------------------
         if n == 0:
-            _at(5, 4)
+            _at(4, 4)
             _style(dim=True)
-            _w('No scripts found on SD card')
+            _w('No apps found on SD card')
             _rst()
             list_end = 6
         else:
-            # Keep selection in view
-            if self.sel < self.scroll:
-                self.scroll = self.sel
-            elif self.sel >= self.scroll + _MAX_VIS:
-                self.scroll = self.sel - _MAX_VIS + 1
+            # Build render rows: (0, category) headers + (1, app_index) entries.
+            rows = []
+            prev_cat = None
+            for i in range(n):
+                cat = self.meta[self.scripts[i]][1]
+                if cat != prev_cat:
+                    rows.append((0, cat))
+                    prev_cat = cat
+                rows.append((1, i))
 
-            # Scroll-up indicator
+            # Locate the selected app's row and keep it visible.
+            sel_row = 0
+            for ri in range(len(rows)):
+                if rows[ri][0] == 1 and rows[ri][1] == self.sel:
+                    sel_row = ri
+                    break
+            if sel_row < self.scroll:
+                self.scroll = sel_row
+            elif sel_row >= self.scroll + _MAX_VIS:
+                self.scroll = sel_row - _MAX_VIS + 1
+            max_scroll = max(0, len(rows) - _MAX_VIS)
+            if self.scroll > max_scroll:
+                self.scroll = max_scroll
+            if self.scroll < 0:
+                self.scroll = 0
+
             if self.scroll > 0:
-                _at(4, _W - 1)
+                _at(3, _W - 1)
                 _style(fg=_YEL, bold=True)
                 _w('^')
                 _rst()
 
-            vis = min(_MAX_VIS, n - self.scroll)
-            for i in range(vis):
-                idx = self.scroll + i
-                row = 5 + i
-                name = self._display_name(self.scripts[idx])
-
+            vis = rows[self.scroll:self.scroll + _MAX_VIS]
+            for i in range(len(vis)):
+                kind, val = vis[i]
+                row = 4 + i
                 _at(row, 1)
-                if idx == self.sel:
-                    # -- Selected item --
-                    _style(fg=_BLK, bg=_GRN, bold=True)
-                    _w(f' \x10 {name:<{_W - 4}}')
+                if kind == 0:
+                    label = ' ' + val + ' '
+                    _style(fg=_CYN, bold=True)
+                    _w(label)
+                    _rst()
+                    _fg(_CYN)
+                    _box_h(max(0, _W - len(label) - 1))
                     _rst()
                 else:
-                    _w('   ')
-                    _style(fg=_WHT)
-                    _w(name)
-                    _rst()
+                    name, cat, desc = self.meta[self.scripts[val]]
+                    if val == self.sel:
+                        line = ' \x10 ' + name
+                        if desc:
+                            line += '  ' + desc
+                        _style(fg=_BLK, bg=_GRN, bold=True)
+                        _w(line[:_W] + ' ' * max(0, _W - len(line)))
+                        _rst()
+                    else:
+                        _w('   ')
+                        _style(fg=_WHT)
+                        _w(name[:_W - 4])
+                        _rst()
+                        rem = _W - 4 - len(name) - 2
+                        if desc and rem > 3:
+                            _style(dim=True)
+                            _w('  ' + desc[:rem])
+                            _rst()
                 _cll()
+            list_end = 4 + len(vis)
 
-            list_end = 5 + vis
-
-            # Scroll-down indicator
-            if self.scroll + _MAX_VIS < n:
+            if self.scroll + _MAX_VIS < len(rows):
                 _at(list_end, _W - 1)
                 _style(fg=_YEL, bold=True)
                 _w('v')

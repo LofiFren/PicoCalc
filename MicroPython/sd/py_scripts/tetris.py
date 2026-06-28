@@ -1,3 +1,4 @@
+# picocalc-app: Tetris | Games | falling blocks classic
 """
 Tetris for PicoCalc
 A complete implementation of the classic Tetris game in MicroPython

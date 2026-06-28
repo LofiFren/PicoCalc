@@ -6,8 +6,8 @@ A MicroPython firmware and script collection for the Clockwork Pi PicoCalc handh
 
 - 320x320 LCD display with flicker-free rendering
 - Membrane keyboard with VT100 terminal
-- Arrow-key navigable menu system
-- Games (Tetris, Snake), 4-instrument Synthesizer, BLE Keyboard, WiFi Manager, LLM client
+- Categorized, arrow-key navigable app menu (auto-hides libraries)
+- Games (Tetris, Snake), 4-instrument Synthesizer, **Strudel** live-coding music, WiFi Manager, local LLM client (Ollama)
 - SSH client with ECDH-SHA2-NISTP256, AES-128-CTR encryption, interactive VT100 terminal
 - Development dashboard with file manager, editor, diff, REPL, eject
 - SD card script auto-discovery
@@ -154,7 +154,7 @@ MicroPython/
 |-- modules/                 --> Copy to device /modules/
 |   |-- picocalc.py              Hardware abstraction (display + keyboard)
 |   |-- vt.py                    VT100 terminal emulator
-|   |-- py_run.py                Menu system with arrow-key navigation
+|   |-- py_run.py                Categorized app menu (auto-hides libraries)
 |   |-- enhanced_sd.py           SD card initialization
 |   |-- picocalc_system.py       System utilities
 |   |-- sdcard.py                SD card driver
@@ -169,17 +169,21 @@ MicroPython/
 |   |-- tetris.py                Tetris with sound effects
 |   |-- snake.py                 Snake with high scores
 |   |-- synth.py                 4-instrument synthesizer with piano keyboard
+|   |-- strudel.py               Strudel mini-notation parser + sequencer (library)
+|   |-- strudel_live.py          Live-coding music UI (color themes, playhead)
+|   |-- strudel_demo.py          Plays a few Strudel pattern grooves
 |   |-- ProxiScan.py             BLE proximity scanner & fox hunt tool
 |   |-- WiFiManager.py           WiFi scanning & connection manager
 |   |-- picocalc_ollama.py       Local LLM client (Ollama)
-|   |-- picocalc_claude.py       Remote Claude client (Anthropic API)
 |   |-- brad.py                  WiFi utility library
 |   |-- demo.py                  Visual display showcase (grayscale, animation)
 |   \-- editor.py                On-device file browser + code editor
+|-- sd/samples/              --> Copy to SD card /samples/ (Strudel drum kit)
+|   \-- bd/sd/hh/cp.raw          8-bit PCM one-shots for the picosampler engine
 |-- firmware/                    Prebuilt UF2 firmware images
 |   |-- picocalc_micropython_pico2w.uf2   (v1.25.0, stable)
 |   |-- picocalc_v127_pico2w.uf2          (v1.27.0, patched)
-|   |-- picocalc_v128_pico2w.uf2          (v1.28.0, native USB)
+|   |-- picocalc_v128_pico2w.uf2          (v1.28.0, native USB + audio engine)
 |   |-- Dockerfile                         Build for v1.25.0
 |   |-- Dockerfile.v127                    Build for v1.27.0 + USB fix
 |   |-- Dockerfile.v128                    Build for v1.28.0 (no USB patch)
@@ -195,6 +199,11 @@ MicroPython/
 |   |-- vtterminal.h
 |   |-- font6x8.h
 |   \-- micropython.cmake
+|-- picosampler/                 C audio engine (DMA-PWM sampler, compiled in)
+|   |-- picosampler.c                8-voice 8-bit PCM mixer, stereo PWM out
+|   |-- micropython.cmake
+|   |-- make_samples.sh              wav -> 8-bit PCM converter (ffmpeg)
+|   \-- generate_drums.py            synthesize a starter drum kit (no deps)
 |-- tools/                       Development tools
 |   |-- dashboard.py                 Web UI server (run this!)
 |   |-- bottle.py                    Vendored web framework (zero install)
@@ -215,12 +224,13 @@ mcp/                                 MCP server for AI assistants
 | **Tetris** | Classic Tetris with 7 pieces, ghost piece, sound effects, level progression |
 | **Snake** | Snake with high score tracking, speed levels, sound |
 | **[Synth](SYNTH.md)** | 4-instrument synthesizer (Piano, Organ, Strings, Synth) with QWERTY piano keyboard, ADSR envelope, arpeggiator, 16-step sequencer, LFO effects, presets |
+| **Strudel Live** | On-device [Strudel](https://strudel.cc/) live-coding: type mini-notation patterns (`bd*4 , ~ sd ~ sd , hh*8`), hear them update live through the native `picosampler` audio engine, sweeping playhead, 5 color themes (SonicPink, Dracula, Monokai, Nord, Terminal) |
+| **Strudel Demo** | Plays a handful of Strudel grooves (four-on-floor, tresillo, breakbeat) to showcase the sequencer |
 | **ProxiScan** | BLE proximity scanner, fox hunt tool with compass, signal tracking, competition timer, waypoints, antenna calibration |
 | **WiFiManager** | WiFi scanner with VT100 UI, signal bars, channel analysis, signal monitor |
 | **SSH Client** | Secure shell client -- ECDH-SHA2-NISTP256 key exchange, AES-128-CTR + HMAC-SHA2-256 encryption, RSA host key verification (TOFU), saved connection profiles with PIN-encrypted passwords, interactive VT100 terminal (53x40) |
 | **SSH Server** | SSH *into* the PicoCalc for a MicroPython REPL -- ECDH-SHA2-NISTP256 key exchange, ECDSA-nistp256 host key, AES-128-CTR + HMAC-SHA2-256, password (salted-hash) and public-key (authorized_keys) auth |
 | **Ollama Client** | Chat with local LLMs over WiFi via Ollama |
-| **Remote Claude** | Chat with Claude (Anthropic API) over WiFi -- streaming replies, multi-turn, API-key or Max/Pro OAuth auth, PIN-encrypted credential. Default model `claude-opus-4-8` |
 | **Demo** | Visual display showcase: grayscale palette, bouncing boxes, scrolling gradient, device info |
 | **Editor** | On-device file browser and code editor -- browse, create, edit, delete scripts without a computer |
 
@@ -271,46 +281,15 @@ The app's status screen shows the exact command (with the device IP) and the hos
 - Supported client public keys: `ecdsa-sha2-nistp256` and `ssh-rsa`/`rsa-sha2-256`. Ed25519 client keys are not yet supported -- use an ECDSA/RSA key or password auth.
 - The session is a self-contained REPL (`eval`/`exec` with output streamed to your terminal); `exit()` or **Ctrl-D** disconnects.
 
-### Remote Claude Notes
-
-**Remote Claude** talks directly to the Anthropic Messages API (`api.anthropic.com`) over HTTPS and streams the reply token-by-token. Multi-turn conversation. First-run setup includes a **model picker** -- Opus 4.8 (default, most capable), Sonnet 4.6 (balanced), Haiku 4.5 (fastest/cheapest), or any model id you type -- and you can switch any time with `/model`. Requires WiFi (run **WiFiManager** first) and firmware with `ssl`/mbedtls (the v1.27/v1.28 builds include it).
-
-**Two ways to authenticate** (chosen on first run):
-
-| Mode | Header | When to use |
-|------|--------|-------------|
-| **API key** (recommended) | `x-api-key` | Static credential, pay-as-you-go. Get one at [console.anthropic.com](https://console.anthropic.com). Best default for a handheld -- paste once, no expiry. |
-| **Max/Pro OAuth** (experimental) | `Authorization: Bearer` + `anthropic-beta: oauth-2025-04-20` | Use your Claude.ai subscription instead of API credits. Tokens are short-lived -- generate on your computer and re-paste via `/auth` when it stops working. |
-
-**Why API key is the default:** the OAuth token expires and needs a refresh flow that's awkward on a headless device, whereas an API key is a static credential you paste once.
-
-**Getting a Max/Pro OAuth token** (the setup screen also prints these steps):
-
-```bash
-brew install anthropics/tap/ant        # or use Claude Code (logs in the same way)
-ant auth login                         # sign in with your Claude subscription
-ant auth print-credentials --access-token   # copy the sk-ant-oat... value
-```
-
-Paste that token into the OAuth setup. It expires after a while -- refresh it the same way and re-enter via `/auth`.
-
-The app is Claude-themed throughout: it opens with an orange sunburst intro on black (a temporary palette swap to true Claude clay `#D97757`), and the chat carries the same theme -- an orange `Claude>` label, light-orange prompt, and dim command hints -- restoring the default palette on exit.
-
-**Files (on the SD card):**
-- `sd/py_scripts/picocalc_claude.py` -- the app
-- `/sd/claude.json` -- auth mode + credential (PIN-encrypted via `secure_creds` when a PIN is set) + model
-
-**In-chat commands:** `/models` pick from a menu, `/model <id>` set a specific model, `/reset` clear history, `/auth` re-enter credentials, `/help`, `/quit`.
-
 ---
 
 ## Menu Controls
 
-The main menu uses arrow-key navigation:
+The main menu groups apps by category (Music, Games, Network, Tools...) with one-line descriptions, and auto-hides library/helper files. Apps opt in to a category with a header comment: `# picocalc-app: Name | Category | description`.
 
 | Key | Action |
 |-----|--------|
-| Up/Down | Navigate script list |
+| Up/Down | Navigate apps |
 | Enter | Run selected script |
 | ESC | Exit to REPL |
 | R | Reload script list |
@@ -435,6 +414,16 @@ docker run --rm \
 - The dashboard and mpremote work with the standard `boot.py` and don't need the Thonny variant.
 
 ---
+
+## What's New in v3.1
+
+- **Strudel on PicoCalc** -- a port of [Strudel](https://strudel.cc/)/TidalCycles pattern music to the handheld:
+  - **`picosampler`** native C audio engine -- a DMA-paced PWM sampler that mixes up to 8 voices of 8-bit PCM streamed from the SD card on **both** audio channels, so the device plays real sampled drums instead of pulse-wave beeps. Compiled into the v1.28 firmware as a third C module.
+  - **Mini-notation sequencer** (`strudel.py`) -- parses a Strudel subset (`bd sd hh*2`, `[bd sd]`, `<bd cp>`, euclid `bd(3,8)`, comma-stacked layers) and schedules it in real time.
+  - **Live-coding UI** (`strudel_live.py`) -- edit patterns on the device and hear them update at the next cycle (like Strudel's Ctrl-Enter); sweeping playhead, event timeline, and **5 real color themes** -- SonicPink, Dracula, Monokai, Nord, Terminal.
+- **Real color from the 4-bit display** -- the GS4 framebuffer drives a 16-entry hardware color LUT, so apps can show true color (not just grayscale) by reprogramming the palette with `picocalcdisplay.setLUT` -- no extra framebuffer RAM. Themes become instant palette swaps.
+- **Categorized app menu** -- `py_run.py` now groups apps into sections with one-line descriptions and **auto-hides library/helper files** (no more stray modules in the list). Apps opt in via a `# picocalc-app: Name | Category | description` header.
+- **Removed Remote Claude** -- the on-device Anthropic-API chat app (`picocalc_claude.py`) has been retired.
 
 ## What's New in v3.0
 
