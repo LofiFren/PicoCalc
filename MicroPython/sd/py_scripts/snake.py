@@ -73,16 +73,27 @@ class SnakeSound:
         vol = volume if volume else self.volume
         duty = int(32768 * vol)
         
-        self.audio_left.freq(frequency)
-        self.audio_right.freq(frequency)
-        self.audio_left.duty_u16(duty)
-        self.audio_right.duty_u16(duty)
-        
-        utime.sleep_ms(duration_ms)
-        
-        self.audio_left.duty_u16(0)
-        self.audio_right.duty_u16(0)
-    
+        try:
+            self.audio_left.freq(frequency)
+            self.audio_right.freq(frequency)
+            self.audio_left.duty_u16(duty)
+            self.audio_right.duty_u16(duty)
+            utime.sleep_ms(duration_ms)
+        finally:
+            # Always silence, even if interrupted mid-tone
+            self.audio_left.duty_u16(0)
+            self.audio_right.duty_u16(0)
+
+    def cleanup(self):
+        """Silence and release the audio pins on exit."""
+        try:
+            self.audio_left.duty_u16(0)
+            self.audio_right.duty_u16(0)
+            self.audio_left.deinit()
+            self.audio_right.deinit()
+        except Exception:
+            pass
+
     def sound_eat(self):
         """Sound for eating food"""
         self.play_tone(600, 50, 0.3)
@@ -411,7 +422,9 @@ class SnakeGame:
                 
         except KeyboardInterrupt:
             print("Game interrupted")
-        
+        finally:
+            self.sound.cleanup()
+
         # Cleanup
         self.display.fill(COLOR_BLACK)
         self.display.text("Thanks for playing Snake!", 10, 10, COLOR_TEXT)

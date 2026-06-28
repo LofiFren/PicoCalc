@@ -1553,8 +1553,8 @@ class PicoSynth:
 
         except KeyboardInterrupt:
             pass
-
-        self.engine.silence()
+        finally:
+            self.engine.silence()
         self.display.fill(BG)
         self.display.show()
 
