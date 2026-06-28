@@ -125,19 +125,29 @@ class TetrisSound:
         vol = volume if volume else self.volume
         duty = int(32768 * vol)  # 50% duty cycle scaled by volume
         
-        # Set frequency and duty cycle
-        self.audio_left.freq(frequency)
-        self.audio_right.freq(frequency)
-        self.audio_left.duty_u16(duty)
-        self.audio_right.duty_u16(duty)
-        
-        # Play for duration
-        utime.sleep_ms(duration_ms)
-        
-        # Stop sound
-        self.audio_left.duty_u16(0)
-        self.audio_right.duty_u16(0)
-    
+        try:
+            # Set frequency and duty cycle
+            self.audio_left.freq(frequency)
+            self.audio_right.freq(frequency)
+            self.audio_left.duty_u16(duty)
+            self.audio_right.duty_u16(duty)
+            # Play for duration
+            utime.sleep_ms(duration_ms)
+        finally:
+            # Always stop sound, even if interrupted mid-tone
+            self.audio_left.duty_u16(0)
+            self.audio_right.duty_u16(0)
+
+    def cleanup(self):
+        """Silence and release the audio pins on exit."""
+        try:
+            self.audio_left.duty_u16(0)
+            self.audio_right.duty_u16(0)
+            self.audio_left.deinit()
+            self.audio_right.deinit()
+        except Exception:
+            pass
+
     def play_sequence(self, notes):
         """Play a sequence of notes [(freq, duration), ...]"""
         if not self.sound_enabled:
@@ -680,7 +690,9 @@ class TetrisGame:
                 
         except KeyboardInterrupt:
             print("Game interrupted")
-        
+        finally:
+            self.sound.cleanup()
+
         # Cleanup
         self.display.fill(COLOR_BLACK)
         self.display.text("Thanks for playing Tetris!", 10, 10, COLOR_TEXT)
