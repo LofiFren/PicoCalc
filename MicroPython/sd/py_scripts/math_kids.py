@@ -100,13 +100,16 @@ class MathSound:
             return
         v = vol if vol else self.volume
         duty = int(32768 * v)
-        self.audio_left.freq(freq)
-        self.audio_right.freq(freq)
-        self.audio_left.duty_u16(duty)
-        self.audio_right.duty_u16(duty)
-        utime.sleep_ms(ms)
-        self.audio_left.duty_u16(0)
-        self.audio_right.duty_u16(0)
+        try:
+            self.audio_left.freq(freq)
+            self.audio_right.freq(freq)
+            self.audio_left.duty_u16(duty)
+            self.audio_right.duty_u16(duty)
+            utime.sleep_ms(ms)
+        finally:
+            # Always silence, even if interrupted mid-tone.
+            self.audio_left.duty_u16(0)
+            self.audio_right.duty_u16(0)
 
     def correct(self):
         """Happy ascending arpeggio."""
@@ -133,8 +136,13 @@ class MathSound:
         self._tone(1047, 200)
 
     def cleanup(self):
-        self.audio_left.duty_u16(0)
-        self.audio_right.duty_u16(0)
+        try:
+            self.audio_left.duty_u16(0)
+            self.audio_right.duty_u16(0)
+            self.audio_left.deinit()
+            self.audio_right.deinit()
+        except Exception:
+            pass
 
 
 class MathKids:
@@ -505,8 +513,8 @@ class MathKids:
 
         except KeyboardInterrupt:
             pass
-
-        self.sound.cleanup()
+        finally:
+            self.sound.cleanup()
 
 
 def main():

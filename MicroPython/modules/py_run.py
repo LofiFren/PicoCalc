@@ -135,6 +135,27 @@ def find_py_files(base_path="/sd"):
     return py_files
 
 
+def _silence_audio():
+    """Reset the audio PWM pins after an app exits, so a misbehaving app
+    cannot leave a tone stuck on (everlasting beep)."""
+    try:
+        if 'picosampler' in sys.modules:
+            sys.modules['picosampler'].deinit()
+    except Exception:
+        pass
+    try:
+        from machine import Pin, PWM
+        for _pin in (28, 27):
+            try:
+                _p = PWM(Pin(_pin))
+                _p.duty_u16(0)
+                _p.deinit()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def run_script(script_path, base_path="/sd"):
     try:
         full_path = f"{base_path}/{script_path}.py"
@@ -694,6 +715,7 @@ class _Menu:
                     _w(f'Running {name}...\n')
                     _rst()
                     run_script(self.scripts[self.sel])
+                    _silence_audio()
                     self._drain_keys()
                     _cursor(True)
                     _rst()

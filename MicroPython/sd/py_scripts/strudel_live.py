@@ -301,6 +301,7 @@ class LiveCoder:
                 utime.sleep_ms(10)
         finally:
             self.seq.stop()
+            strudel.shutdown()                    # release audio engine + pins
             _apply_lut(_ORIG_LUT, swapped=True)   # restore default palette
             self.d.beginDraw()
             self.d.fill(0)

@@ -33,9 +33,22 @@ _bufs = {}     # name -> bytes (kept so the data stays alive)
 
 def init(sr=22050):
     global _inited
-    if not _inited:
-        picosampler.init(sr)
-        _inited = True
+    # picosampler.init is idempotent (returns early if already running), so
+    # always call it -- this also recovers after a shutdown()/deinit().
+    rate = picosampler.init(sr)
+    _inited = True
+    return rate
+
+
+def shutdown():
+    """Release the audio engine (stop DMA, free the PWM pins). Call on app exit
+    so a later app's machine.PWM audio isn't fought by a left-running engine."""
+    global _inited
+    try:
+        picosampler.deinit()
+    except Exception:
+        pass
+    _inited = False
 
 
 def _sample(name):

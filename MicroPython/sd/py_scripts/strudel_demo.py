@@ -15,10 +15,13 @@ PATTERNS = [
 def main():
     strudel.init()
     print("strudel demo - playing %d patterns" % len(PATTERNS))
-    for name, code, cps in PATTERNS:
-        print("  %-18s %s" % (name, code))
-        strudel.jam(code, cps=cps, cycles=4)
-    print("done")
+    try:
+        for name, code, cps in PATTERNS:
+            print("  %-18s %s" % (name, code))
+            strudel.jam(code, cps=cps, cycles=4)
+        print("done")
+    finally:
+        strudel.shutdown()        # release audio engine on exit
 
 
 if __name__ == "__main__":
