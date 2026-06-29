@@ -171,7 +171,7 @@ MicroPython/
 |   |-- synth.py                 4-instrument synthesizer with piano keyboard
 |   |-- strudel.py               Strudel mini-notation parser + sequencer (library)
 |   |-- strudel_live.py          Live-coding music UI (color themes, playhead)
-|   |-- strudel_demo.py          Plays a few Strudel pattern grooves
+|   |-- strudel_demo.py          Interactive tutorial: learn the mini-notation
 |   |-- ProxiScan.py             BLE proximity scanner & fox hunt tool
 |   |-- WiFiManager.py           WiFi scanning & connection manager
 |   |-- picocalc_ollama.py       Local LLM client (Ollama)
@@ -225,7 +225,7 @@ mcp/                                 MCP server for AI assistants
 | **Snake** | Snake with high score tracking, speed levels, sound |
 | **[Synth](SYNTH.md)** | 4-instrument synthesizer (Piano, Organ, Strings, Synth) with QWERTY piano keyboard, ADSR envelope, arpeggiator, 16-step sequencer, LFO effects, presets |
 | **Strudel Live** | On-device [Strudel](https://strudel.cc/) live-coding: type mini-notation patterns (`bd*4 , ~ sd ~ sd , hh*8`), hear them update live through the native `picosampler` audio engine, sweeping playhead, 5 color themes (SonicPink, Dracula, Monokai, Nord, Terminal) |
-| **Strudel Demo** | Plays a handful of Strudel grooves (four-on-floor, tresillo, breakbeat) to showcase the sequencer |
+| **Strudel Basics** | Interactive color tutorial -- 9 lessons that teach the mini-notation (sequences, `*`, `[]`, `<>`, euclid, layering) with a syntax-colored pattern, a live rhythm timeline, and audio. A fun way to learn before jumping into Strudel Live |
 | **ProxiScan** | BLE proximity scanner, fox hunt tool with compass, signal tracking, competition timer, waypoints, antenna calibration |
 | **WiFiManager** | WiFi scanner with VT100 UI, signal bars, channel analysis, signal monitor |
 | **SSH Client** | Secure shell client -- ECDH-SHA2-NISTP256 key exchange, AES-128-CTR + HMAC-SHA2-256 encryption, RSA host key verification (TOFU), saved connection profiles with PIN-encrypted passwords, interactive VT100 terminal (53x40) |
