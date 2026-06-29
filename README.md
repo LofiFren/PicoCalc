@@ -234,6 +234,38 @@ mcp/                                 MCP server for AI assistants
 | **Demo** | Visual display showcase: grayscale palette, bouncing boxes, scrolling gradient, device info |
 | **Editor** | On-device file browser and code editor -- browse, create, edit, delete scripts without a computer |
 
+### Strudel Support
+
+This is a **small reimplementation** of Strudel's pattern idea that runs natively
+in MicroPython + C -- **not a full port**. There is no JavaScript engine and not
+the full Strudel/TidalCycles function library; it's a focused subset. Sounds are
+**samples only** (the bundled `bd`/`sd`/`hh`/`cp` kit, plus any 8-bit `pcm_u8`
+`.raw` you drop in `/sd/samples/` -- the sample name is the file name).
+
+**Mini-notation supported**
+
+| Syntax | Meaning |
+|--------|---------|
+| `bd sd hh` | sequence -- splits the cycle evenly |
+| `~` | rest (silence) |
+| `[bd sd]` | sub-group -- packs sounds into one step |
+| `bd*N` | repeat N times (faster) |
+| `bd/N` | play once every N cycles |
+| `<bd sd>` | alternate -- one per cycle |
+| `a , b` (or one layer per line) | stack / layer together |
+| `bd(k,n)` / `bd(k,n,rot)` | euclidean rhythm (+ rotation) |
+| `// ...` or `# ...` | comment (inline or whole line) |
+
+**Effects supported** (per layer, after `\|`): `lpf` `hpf` `res` `gain` `a` `d`
+`s` `r` `dur` -- see [Strudel Effects](#strudel-effects) below.
+
+**Not supported** (by design, for now): the JavaScript API and method chains;
+synth/oscillator voices (`note`/`n`); pitch / `speed` / `accelerate`; `pan`;
+time/character effects (`delay`, `room`/reverb, `crush`, `coarse`, `shape`);
+transform functions (`rev`, `jux`, `every`, `sometimes`, `off`, `degrade`, ...);
+per-event (rather than per-layer) effects; and sample banks beyond what you place
+in `/sd/samples/`.
+
 ### Strudel Effects
 
 The `picosampler` audio engine does real per-voice DSP in C: a resonant 2-stage
@@ -439,7 +471,7 @@ docker run --rm \
 
 ## What's New in v3.1
 
-- **Strudel on PicoCalc** -- a port of [Strudel](https://strudel.cc/)/TidalCycles pattern music to the handheld:
+- **Strudel on PicoCalc** -- a focused **subset** of [Strudel](https://strudel.cc/)/TidalCycles pattern music ported to the handheld (not the full engine -- see [Strudel Support](#strudel-support) for exactly what's covered):
   - **`picosampler`** native C audio engine -- a DMA-paced PWM sampler that mixes up to 8 voices of 8-bit PCM streamed from the SD card on **both** audio channels, so the device plays real sampled drums instead of pulse-wave beeps. Compiled into the v1.28 firmware as a third C module.
   - **Per-voice DSP** -- a resonant 2-stage filter (lowpass/highpass) and an ADSR envelope, all fixed-point so the audio interrupt never touches the FPU. Drive it from the mini-notation with a per-layer effect tail: `bd*4 , hh*8 | lpf 600 res 150 r 40` (see [Strudel Effects](#strudel-effects)).
   - **Mini-notation sequencer** (`strudel.py`) -- parses a Strudel subset (`bd sd hh*2`, `[bd sd]`, `<bd cp>`, euclid `bd(3,8)`, comma-stacked layers, `//` and `#` comments) and schedules it in real time.
