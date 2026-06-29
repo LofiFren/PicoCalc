@@ -209,8 +209,8 @@ class LiveCoder:
     def _evaluate(self):
         parts = []
         for ln in self.lines:
-            s = ln.strip()
-            if s and not s.startswith("#"):
+            s = ln[:strudel._comment_cut(ln)].strip()   # drop // or # comment
+            if s:
                 parts.append(s)
         code = " , ".join(parts)
         if not code:
@@ -220,18 +220,19 @@ class LiveCoder:
 
     # ----- drawing --------------------------------------------------------
     def _draw_code_line(self, x, y, text):
-        if text.strip().startswith("#"):
-            self.d.text(text, x, y, REST)
-            return
-        i, n, cx = 0, len(text), x
+        cut = strudel._comment_cut(text)
+        code, comment = text[:cut], text[cut:]
+        i, n, cx = 0, len(code), x
         while i < n:
-            col = _char_color(text[i])
+            col = _char_color(code[i])
             j = i
-            while j < n and _char_color(text[j]) == col:
+            while j < n and _char_color(code[j]) == col:
                 j += 1
-            self.d.text(text[i:j], cx, y, col)
+            self.d.text(code[i:j], cx, y, col)
             cx += (j - i) * 6
             i = j
+        if comment:                       # render the // or # comment dim
+            self.d.text(comment, cx, y, REST)
 
     def _draw_transport(self):
         d = self.d

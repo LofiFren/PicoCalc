@@ -72,7 +72,18 @@ def _sample(name):
 _SPECIAL = "[]<>(),*/"
 
 
+def _comment_cut(s):
+    """Index where a line comment (// or #) starts, or len(s) if none."""
+    cut = len(s)
+    for m in ("//", "#"):
+        j = s.find(m)
+        if j != -1 and j < cut:
+            cut = j
+    return cut
+
+
 def _tokenize(s):
+    s = s[:_comment_cut(s)]        # drop a trailing // or # comment
     toks = []
     i, n = 0, len(s)
     while i < n:
