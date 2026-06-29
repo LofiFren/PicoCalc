@@ -1,36 +1,32 @@
 // picosampler - DMA-paced PWM audio mixer for PicoCalc (RP2350 / Pico 2W).
 //
-// Milestone 1 of the "Strudel on PicoCalc" port (option C1): a native C audio
-// engine that mixes short 8-bit PCM one-shots and streams them out the audio
-// PWM pins via DMA, so the device can actually play sampled sounds (bd/sd/hh...)
-// instead of pulse-wave chiptune.
+// Strudel-on-PicoCalc audio engine (option C1/C2). A native C sampler that
+// streams 8-bit PCM one-shots from the SD card and mixes them to the audio PWM
+// pins via DMA. Per voice it now also supports an ADSR amplitude envelope and a
+// 2-stage resonant filter (highpass -> lowpass), so patterns can shape the
+// sound the way Strudel's lpf/hpf/adsr do.
 //
-// Design (standard Pico PWM-audio method):
-//   - Each audio PWM slice runs AT the sample rate: period = sys_clk / SR cycles,
-//     so each PWM wrap is one output sample and the duty is the sample value.
-//     With sys_clk 150MHz and SR ~22kHz that gives ~12-13 bits of duty
-//     resolution. The speaker/headphone path reconstructs the waveform.
-//   - The PWM's per-wrap DREQ paces ping-pong DMA channels that copy duty values
-//     into the PWM compare register - exactly one transfer per sample, so the
-//     DMA can never free-run.
-//   - We drive BOTH audio pins (GPIO 28 left, GPIO 27 right) with the same mono
-//     mix. They are on different PWM slices, so a second DMA pair feeds the right
-//     slice from the same buffers; both pairs start atomically and stay locked.
-//     Each duty value is written into both halves of the 32-bit CC word
-//     ((level<<16)|level) so it lands in whichever channel (A or B) the pin uses.
-//   - On block completion the DMA IRQ mixes the next block of all active voices
-//     into the buffer the LEFT pair just drained; the right pair only rewinds.
+// Signal path (all per-sample, in float):
+//   sample(-1..1) * gain -> HPF (SVF) -> LPF (SVF) -> ADSR env -> sum -> PWM
+// The PWM wrap is ~6800 (sys_clk/sample_rate), i.e. ~12.7-bit output, so mixing
+// in float and mapping to [0, wrap] keeps full resolution (no 8-bit bottleneck).
 //
-// Notes:
-//   - irq_set must be a SHARED handler: MicroPython's rp2 port already installs
-//     a shared handler on DMA_IRQ_0; an exclusive claim panics and hangs.
-//   - Samples live in MicroPython bytes/bytearray objects passed to register();
-//     a GC root keeps them alive (non-moving GC keeps the raw pointer valid).
+// Design notes:
+//   - PWM slice runs AT the sample rate; per-wrap DREQ paces ping-pong DMA, one
+//     transfer per sample (storm-proof). Both audio pins (GPIO 28 + 27) are fed
+//     the same mono mix via two DMA pairs (the PicoCalc speaker needs both).
+//   - Mixing + DSP happen in the DMA-completion IRQ. The RP2350 M33 has an FPU
+//     with lazy stacking, so float in the ISR is safe.
+//   - irq_add_shared_handler (NOT exclusive): MicroPython's rp2 port already
+//     owns DMA_IRQ_0 with a shared handler; exclusive would panic/hang.
+//   - register() pins sample bytes as GC roots; the non-moving GC keeps the raw
+//     pointer valid.
 
 #include "py/runtime.h"
 #include "py/obj.h"
 #include "py/mphal.h"
 #include <string.h>
+#include <math.h>
 
 #include "pico/stdlib.h"
 #include "hardware/pwm.h"
@@ -39,77 +35,152 @@
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
 
-#define AUDIO_GPIO_L    28      // left audio PWM pin
-#define AUDIO_GPIO_R    27      // right audio PWM pin
-#define BLOCK           256     // samples per DMA block (per ping-pong half)
+#ifndef M_PI
+#define M_PI 3.14159265358979323846f
+#endif
+
+#define AUDIO_GPIO_L    28
+#define AUDIO_GPIO_R    27
+#define BLOCK           256
 #define MAX_VOICES      8
 #define MAX_SAMPLES     16
 #define DEFAULT_SR      22050
 
+// Topology-preserving (Cytomic) state-variable filter, one stage.
 typedef struct {
-    const uint8_t *data;   // pointer into a kept-alive bytes object
-    uint32_t len;
-} sample_t;
+    float ic1, ic2;        // integrator state
+    float a1, a2, a3, k;   // coefficients
+    int on;
+} svf_t;
 
 typedef struct {
     const uint8_t *data;
     uint32_t len;
     uint32_t pos;
-    int32_t gain;          // 8.8 fixed point (256 = unity)
+    float gain;
     volatile bool active;
+    // ADSR
+    int env_stage;         // 0=attack 1=decay 2=sustain 3=release
+    float env, a_inc, d_inc, r_inc, sus;
+    uint32_t gate, age;    // gate=samples until release (0 = none)
+    // filters
+    svf_t hp, lp;
 } voice_t;
 
-// Two output blocks for ping-pong DMA. Each word holds the duty in both
-// half-words so one DMA write drives whichever channel (A/B) a pin uses, and
-// narrow-write byte-replication on RP2xxx is never an issue.
-static uint32_t audio_buf[2][BLOCK];
+typedef struct {
+    const uint8_t *data;
+    uint32_t len;
+} sample_t;
 
+static uint32_t audio_buf[2][BLOCK];
 static sample_t samples[MAX_SAMPLES];
 static int n_samples = 0;
-
 static voice_t voices[MAX_VOICES];
 
 static uint slice_l, slice_r;
-static uint32_t pwm_wrap;      // PWM TOP = full-scale duty value
+static uint32_t pwm_wrap;
 static int dma_la = -1, dma_lb = -1, dma_ra = -1, dma_rb = -1;
 static volatile bool running = false;
-static volatile uint32_t irq_count = 0;   // proves the DMA/IRQ is actually firing
+static volatile uint32_t irq_count = 0;
 static float actual_sr = 0.0f;
 
-// Keep registered sample buffers alive across GC. Scanned by the collector.
 MP_REGISTER_ROOT_POINTER(mp_obj_t picosampler_keepalive[MAX_SAMPLES]);
 
-// Mix all active voices into one block (called from the DMA IRQ).
+// ---- DSP helpers -----------------------------------------------------------
+
+static void svf_set(svf_t *f, int cutoff, int res) {
+    if (cutoff <= 0) {
+        f->on = 0;
+        return;
+    }
+    float fc = (float)cutoff;
+    float nyq = actual_sr * 0.45f;
+    if (fc > nyq) {
+        fc = nyq;
+    }
+    float g = tanf(M_PI * fc / actual_sr);
+    float q = (float)res / 100.0f;
+    if (q < 0.5f) {
+        q = 0.5f;
+    }
+    float k = 1.0f / q;
+    f->a1 = 1.0f / (1.0f + g * (g + k));
+    f->a2 = g * f->a1;
+    f->a3 = g * f->a2;
+    f->k = k;
+    f->ic1 = 0.0f;
+    f->ic2 = 0.0f;
+    f->on = 1;
+}
+
+// Returns the lowpass output if low!=0, else the highpass output.
+static inline float svf_run(svf_t *f, float x, int low) {
+    float v3 = x - f->ic2;
+    float v1 = f->a1 * f->ic1 + f->a2 * v3;
+    float v2 = f->ic2 + f->a2 * f->ic1 + f->a3 * v3;
+    f->ic1 = 2.0f * v1 - f->ic1;
+    f->ic2 = 2.0f * v2 - f->ic2;
+    return low ? v2 : (x - f->k * v1 - v2);
+}
+
 static void mix_block(uint32_t *buf) {
+    const float half = pwm_wrap * 0.5f;
     for (int i = 0; i < BLOCK; i++) {
-        int32_t acc = 0;
+        float acc = 0.0f;
         for (int v = 0; v < MAX_VOICES; v++) {
             voice_t *vp = &voices[v];
             if (!vp->active) {
                 continue;
             }
-            // 8-bit unsigned PCM centered at 128 -> signed, scaled by gain.
-            acc += (((int32_t)vp->data[vp->pos] - 128) * vp->gain) >> 8;
+            float x = ((float)vp->data[vp->pos] - 128.0f) * (1.0f / 128.0f);
+            x *= vp->gain;
+            if (vp->hp.on) {
+                x = svf_run(&vp->hp, x, 0);
+            }
+            if (vp->lp.on) {
+                x = svf_run(&vp->lp, x, 1);
+            }
+            x *= vp->env;
+            acc += x;
+
+            // advance ADSR
+            switch (vp->env_stage) {
+                case 0:
+                    vp->env += vp->a_inc;
+                    if (vp->env >= 1.0f) { vp->env = 1.0f; vp->env_stage = 1; }
+                    break;
+                case 1:
+                    vp->env -= vp->d_inc;
+                    if (vp->env <= vp->sus) { vp->env = vp->sus; vp->env_stage = 2; }
+                    break;
+                case 2:
+                    vp->env = vp->sus;
+                    break;
+                default:
+                    vp->env -= vp->r_inc;
+                    if (vp->env <= 0.0f) { vp->env = 0.0f; vp->active = false; }
+                    break;
+            }
+            vp->age++;
+            if (vp->gate && vp->age >= vp->gate && vp->env_stage < 3) {
+                vp->env_stage = 3;
+            }
             if (++vp->pos >= vp->len) {
                 vp->active = false;
             }
         }
-        int32_t out = acc + 128;       // back to 0..255 unsigned
-        if (out < 0) {
-            out = 0;
-        } else if (out > 255) {
-            out = 255;
+        int32_t level = (int32_t)(acc * half + half);
+        if (level < 0) {
+            level = 0;
+        } else if (level > (int32_t)pwm_wrap) {
+            level = pwm_wrap;
         }
-        // Scale 8-bit sample up to the PWM full-scale duty; duplicate into both
-        // half-words so it drives channel A or B of whatever slice gets it.
-        uint32_t level = (uint32_t)out * pwm_wrap / 255;
-        buf[i] = (level << 16) | level;
+        buf[i] = ((uint32_t)level << 16) | (uint32_t)level;
     }
 }
 
 static void __isr dma_handler(void) {
     irq_count++;
-    // Mix only on the LEFT pair's completion (that advances the voices once).
     if (dma_hw->ints0 & (1u << dma_la)) {
         dma_hw->ints0 = 1u << dma_la;
         mix_block(audio_buf[0]);
@@ -120,7 +191,6 @@ static void __isr dma_handler(void) {
         mix_block(audio_buf[1]);
         dma_channel_set_read_addr(dma_lb, audio_buf[1], false);
     }
-    // Right pair plays the same buffers; just rewind it.
     if (dma_hw->ints0 & (1u << dma_ra)) {
         dma_hw->ints0 = 1u << dma_ra;
         dma_channel_set_read_addr(dma_ra, audio_buf[0], false);
@@ -131,7 +201,8 @@ static void __isr dma_handler(void) {
     }
 }
 
-// Configure a ping-pong DMA pair feeding one PWM slice's CC register.
+// ---- DMA / PWM setup -------------------------------------------------------
+
 static void setup_pair(int ca, int cb, uint slice) {
     volatile void *cc = &pwm_hw->slice[slice].cc;
     uint dreq = DREQ_PWM_WRAP0 + slice;
@@ -168,12 +239,10 @@ static mp_obj_t ps_init(size_t n_args, const mp_obj_t *args) {
     if (running) {
         return mp_obj_new_float(actual_sr);
     }
-
     for (int v = 0; v < MAX_VOICES; v++) {
         voices[v].active = false;
     }
 
-    // PWM period = top cycles -> output sample rate = sys_clk / top.
     uint32_t sysclk = clock_get_hz(clk_sys);
     uint32_t top = sysclk / (uint32_t)sr;
     if (top < 2) {
@@ -191,7 +260,6 @@ static mp_obj_t ps_init(size_t n_args, const mp_obj_t *args) {
     setup_slice(slice_l);
     setup_slice(slice_r);
 
-    // Prime both blocks with silence (midpoint duty in both half-words).
     uint32_t s = pwm_wrap / 2;
     uint32_t silence = (s << 16) | s;
     for (int i = 0; i < BLOCK; i++) {
@@ -206,20 +274,18 @@ static mp_obj_t ps_init(size_t n_args, const mp_obj_t *args) {
     setup_pair(dma_la, dma_lb, slice_l);
     setup_pair(dma_ra, dma_rb, slice_r);
 
-    // Shared (not exclusive) handler: MicroPython's rp2 port owns DMA_IRQ_0 with
-    // a shared handler; an exclusive claim would panic() and hang the board.
     irq_add_shared_handler(DMA_IRQ_0, dma_handler,
                            PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY);
     irq_set_enabled(DMA_IRQ_0, true);
 
     running = true;
-    // Start both left and right lead channels atomically so they stay locked.
     dma_start_channel_mask((1u << dma_la) | (1u << dma_ra));
     return mp_obj_new_float(actual_sr);
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(ps_init_obj, 0, 1, ps_init);
 
-// register(buf) -> sample id. buf is bytes/bytearray of 8-bit unsigned PCM.
+// ---- API -------------------------------------------------------------------
+
 static mp_obj_t ps_register(mp_obj_t buf_in) {
     if (n_samples >= MAX_SAMPLES) {
         mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("sample table full"));
@@ -228,33 +294,73 @@ static mp_obj_t ps_register(mp_obj_t buf_in) {
     mp_get_buffer_raise(buf_in, &bi, MP_BUFFER_READ);
     samples[n_samples].data = (const uint8_t *)bi.buf;
     samples[n_samples].len = bi.len;
-    MP_STATE_PORT(picosampler_keepalive)[n_samples] = buf_in;  // pin against GC
+    MP_STATE_PORT(picosampler_keepalive)[n_samples] = buf_in;
     return MP_OBJ_NEW_SMALL_INT(n_samples++);
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(ps_register_obj, ps_register);
 
-// play(id, gain=256) -> voice index, or -1 if no free voice.
-static mp_obj_t ps_play(size_t n_args, const mp_obj_t *args) {
-    int id = mp_obj_get_int(args[0]);
+// play(id, gain=256, *, lpf=0, hpf=0, res=70, a=0, d=0, s=255, r=0, dur=0)
+//   lpf/hpf : cutoff Hz (0 = bypass)   res : resonance/Q*100 (70 ~= 0.7)
+//   a/d/r   : ms                       s   : sustain 0-255   dur : gate ms
+static mp_obj_t ps_play(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+    enum { ARG_id, ARG_gain, ARG_lpf, ARG_hpf, ARG_res, ARG_a, ARG_d, ARG_s, ARG_r, ARG_dur };
+    static const mp_arg_t allowed[] = {
+        { MP_QSTR_id,   MP_ARG_REQUIRED | MP_ARG_INT, {.u_int = 0} },
+        { MP_QSTR_gain, MP_ARG_INT, {.u_int = 256} },
+        { MP_QSTR_lpf,  MP_ARG_INT, {.u_int = 0} },
+        { MP_QSTR_hpf,  MP_ARG_INT, {.u_int = 0} },
+        { MP_QSTR_res,  MP_ARG_INT, {.u_int = 70} },
+        { MP_QSTR_a,    MP_ARG_INT, {.u_int = 0} },
+        { MP_QSTR_d,    MP_ARG_INT, {.u_int = 0} },
+        { MP_QSTR_s,    MP_ARG_INT, {.u_int = 255} },
+        { MP_QSTR_r,    MP_ARG_INT, {.u_int = 0} },
+        { MP_QSTR_dur,  MP_ARG_INT, {.u_int = 0} },
+    };
+    mp_arg_val_t a[MP_ARRAY_SIZE(allowed)];
+    mp_arg_parse_all(n_args, pos_args, kw_args, MP_ARRAY_SIZE(allowed), allowed, a);
+
+    int id = a[ARG_id].u_int;
     if (id < 0 || id >= n_samples) {
         mp_raise_ValueError(MP_ERROR_TEXT("bad sample id"));
     }
-    int32_t gain = (n_args >= 2) ? mp_obj_get_int(args[1]) : 256;
+    float fs = actual_sr > 0.0f ? actual_sr : DEFAULT_SR;
 
-    for (int v = 0; v < MAX_VOICES; v++) {
-        if (!voices[v].active) {
-            voices[v].data = samples[id].data;
-            voices[v].len = samples[id].len;
-            voices[v].pos = 0;
-            voices[v].gain = gain;
-            __dmb();
-            voices[v].active = true;
-            return MP_OBJ_NEW_SMALL_INT(v);
+    for (int vi = 0; vi < MAX_VOICES; vi++) {
+        voice_t *vp = &voices[vi];
+        if (vp->active) {
+            continue;
         }
+        vp->data = samples[id].data;
+        vp->len = samples[id].len;
+        vp->pos = 0;
+        vp->gain = a[ARG_gain].u_int / 256.0f;
+
+        vp->sus = a[ARG_s].u_int / 255.0f;
+        int ms_a = a[ARG_a].u_int, ms_d = a[ARG_d].u_int, ms_r = a[ARG_r].u_int;
+        vp->a_inc = ms_a > 0 ? 1.0f / (ms_a * 0.001f * fs) : 2.0f;
+        vp->d_inc = ms_d > 0 ? (1.0f - vp->sus) / (ms_d * 0.001f * fs) : 2.0f;
+        vp->r_inc = ms_r > 0 ? 1.0f / (ms_r * 0.001f * fs) : 2.0f;
+        if (ms_a > 0) {
+            vp->env = 0.0f;
+            vp->env_stage = 0;
+        } else {
+            vp->env = 1.0f;
+            vp->env_stage = 1;
+        }
+        int dur = a[ARG_dur].u_int;
+        vp->gate = dur > 0 ? (uint32_t)(dur * 0.001f * fs) : 0;
+        vp->age = 0;
+
+        svf_set(&vp->hp, a[ARG_hpf].u_int, a[ARG_res].u_int);
+        svf_set(&vp->lp, a[ARG_lpf].u_int, a[ARG_res].u_int);
+
+        __dmb();
+        vp->active = true;
+        return MP_OBJ_NEW_SMALL_INT(vi);
     }
-    return MP_OBJ_NEW_SMALL_INT(-1);  // voice stealing is a later enhancement
+    return MP_OBJ_NEW_SMALL_INT(-1);
 }
-static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(ps_play_obj, 1, 2, ps_play);
+static MP_DEFINE_CONST_FUN_OBJ_KW(ps_play_obj, 1, ps_play);
 
 static mp_obj_t ps_stop_all(void) {
     for (int v = 0; v < MAX_VOICES; v++) {
@@ -269,21 +375,24 @@ static mp_obj_t ps_sample_rate(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(ps_sample_rate_obj, ps_sample_rate);
 
-// stats() -> dict of live engine state for diagnostics.
 static mp_obj_t ps_stats(void) {
     mp_obj_t d = mp_obj_new_dict(0);
+    int nv = 0;
+    for (int v = 0; v < MAX_VOICES; v++) {
+        if (voices[v].active) {
+            nv++;
+        }
+    }
     mp_obj_dict_store(d, MP_ROM_QSTR(MP_QSTR_running), mp_obj_new_bool(running));
     mp_obj_dict_store(d, MP_ROM_QSTR(MP_QSTR_irq_count), mp_obj_new_int(irq_count));
+    mp_obj_dict_store(d, MP_ROM_QSTR(MP_QSTR_voices), mp_obj_new_int(nv));
     mp_obj_dict_store(d, MP_ROM_QSTR(MP_QSTR_slice_l), mp_obj_new_int(slice_l));
     mp_obj_dict_store(d, MP_ROM_QSTR(MP_QSTR_slice_r), mp_obj_new_int(slice_r));
     mp_obj_dict_store(d, MP_ROM_QSTR(MP_QSTR_wrap), mp_obj_new_int(pwm_wrap));
-    uint32_t cc = running ? (pwm_hw->slice[slice_l].cc & 0xffff) : 0;
-    mp_obj_dict_store(d, MP_ROM_QSTR(MP_QSTR_cc), mp_obj_new_int(cc));
     return d;
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(ps_stats_obj, ps_stats);
 
-// deinit() -> release PWM/DMA/IRQ so the pins can be handed back to machine.PWM.
 static mp_obj_t ps_deinit(void) {
     if (!running) {
         return mp_const_none;
