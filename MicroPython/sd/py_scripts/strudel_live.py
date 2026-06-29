@@ -66,7 +66,7 @@ THEMES = [
 _ORIG_LUT = [0x0000, 0x0080, 0x0004, 0x0084, 0x1000, 0x1080, 0x1004, 0x18C6,
              0x1084, 0x00F8, 0xE007, 0xE0FF, 0x1F00, 0x1FF8, 0xFF07, 0xFFFF]
 
-OPS = "[]<>(),*/"
+OPS = "[]<>(),*/|"
 
 # Layout
 HDR_H = 18
@@ -207,14 +207,9 @@ class LiveCoder:
             self.dirty = True
 
     def _evaluate(self):
-        parts = []
-        for ln in self.lines:
-            s = ln[:strudel._comment_cut(ln)].strip()   # drop // or # comment
-            if s:
-                parts.append(s)
-        code = " , ".join(parts)
-        if not code:
-            return
+        # Each editor line is a layer (comment-stripped + emptied lines are
+        # dropped by the parser). Newline-join preserves per-line "| fx" tails.
+        code = "\n".join(self.lines)
         if self.seq.set_code(code) and not self.seq.playing:
             self.seq.start()
 

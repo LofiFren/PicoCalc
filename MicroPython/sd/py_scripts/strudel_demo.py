@@ -59,7 +59,17 @@ LESSONS = [
         "Stack layers with commas:",
         "kicks + backbeat snare +",
         "hats + a clap = a groove!"]},
-    {"t": "9. Your Turn!", "c": "bd*4 , ~ sd ~ sd , hh(5,8) , ~ cp", "cps": 0.55, "x": [
+    {"t": "9. Filter  | lpf", "c": "bd*4 , hh*8 | lpf 500", "cps": 0.5, "x": [
+        "Add effects after a | bar.",
+        "lpf 500 = dark lowpass;",
+        "hpf 3000 = thin, crispy highs.",
+        "res 150 makes it squelchy."]},
+    {"t": "10. Envelope  | a r", "c": "bd ~ , ~ cp | a 3 r 180 dur 90", "cps": 0.5, "x": [
+        "a=attack  r=release (ms),",
+        "dur = how long it rings.",
+        "Shapes each hit's volume,",
+        "soft fades or punchy stabs."]},
+    {"t": "11. Your Turn!", "c": "bd*4 , ~ sd ~ sd , hh(5,8) | lpf 900", "cps": 0.55, "x": [
         "Mix these tricks together.",
         "Then open STRUDEL LIVE and",
         "make your own. Have fun!"]},
@@ -90,7 +100,7 @@ class Tutorial:
         L = LESSONS[self.idx]
         self.seq.set_cps(L.get("cps", 0.5))
         self.seq.stop()
-        self.seq.node = None        # force immediate (not next-cycle) swap
+        self.seq.layers = []        # force immediate (not next-cycle) swap
         self.seq.pending = None
         self.seq.set_code(L["c"])
         if self.playing:

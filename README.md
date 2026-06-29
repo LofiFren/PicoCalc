@@ -224,8 +224,8 @@ mcp/                                 MCP server for AI assistants
 | **Tetris** | Classic Tetris with 7 pieces, ghost piece, sound effects, level progression |
 | **Snake** | Snake with high score tracking, speed levels, sound |
 | **[Synth](SYNTH.md)** | 4-instrument synthesizer (Piano, Organ, Strings, Synth) with QWERTY piano keyboard, ADSR envelope, arpeggiator, 16-step sequencer, LFO effects, presets |
-| **Strudel Live** | On-device [Strudel](https://strudel.cc/) live-coding: type mini-notation patterns (`bd*4 , ~ sd ~ sd , hh*8`), hear them update live through the native `picosampler` audio engine, sweeping playhead, 5 color themes (SonicPink, Dracula, Monokai, Nord, Terminal) |
-| **Strudel Basics** | Interactive color tutorial -- 9 lessons that teach the mini-notation (sequences, `*`, `[]`, `<>`, euclid, layering) with a syntax-colored pattern, a live rhythm timeline, and audio. A fun way to learn before jumping into Strudel Live |
+| **Strudel Live** | On-device [Strudel](https://strudel.cc/) live-coding: type mini-notation patterns (`bd*4 , ~ sd ~ sd , hh*8`) with per-layer effects (`\| lpf 600 r 40`), hear them update live through the native `picosampler` audio engine (resonant lpf/hpf + ADSR), sweeping playhead, 5 color themes (SonicPink, Dracula, Monokai, Nord, Terminal) |
+| **Strudel Basics** | Interactive color tutorial -- 11 lessons that teach the mini-notation (sequences, `*`, `[]`, `<>`, euclid, layering) and effects (filters, envelope) with a syntax-colored pattern, a live rhythm timeline, and audio. A fun way to learn before jumping into Strudel Live |
 | **ProxiScan** | BLE proximity scanner, fox hunt tool with compass, signal tracking, competition timer, waypoints, antenna calibration |
 | **WiFiManager** | WiFi scanner with VT100 UI, signal bars, channel analysis, signal monitor |
 | **SSH Client** | Secure shell client -- ECDH-SHA2-NISTP256 key exchange, AES-128-CTR + HMAC-SHA2-256 encryption, RSA host key verification (TOFU), saved connection profiles with PIN-encrypted passwords, interactive VT100 terminal (53x40) |
@@ -233,6 +233,28 @@ mcp/                                 MCP server for AI assistants
 | **Ollama Client** | Chat with local LLMs over WiFi via Ollama |
 | **Demo** | Visual display showcase: grayscale palette, bouncing boxes, scrolling gradient, device info |
 | **Editor** | On-device file browser and code editor -- browse, create, edit, delete scripts without a computer |
+
+### Strudel Effects
+
+The `picosampler` audio engine does real per-voice DSP in C: a resonant 2-stage
+state-variable filter (highpass -> lowpass) and an ADSR amplitude envelope, all
+mixed in float for full output resolution. Add effects to a pattern line after a
+`|` bar (they apply to every sound on that line):
+
+```
+bd*4 , hh*8 | lpf 600 res 150     # dark, squelchy lowpass
+~ sd ~ sd   | hpf 1200            # thin, highpassed snare
+bd ~        | a 3 r 180 dur 90    # shaped attack/release
+```
+
+| Effect | Meaning |
+|--------|---------|
+| `lpf <hz>` / `hpf <hz>` | lowpass / highpass cutoff (0 = off) |
+| `res <n>` | filter resonance / Q*100 (70 ~= 0.7, higher = more peak) |
+| `a` `d` `r` | envelope attack / decay / release, milliseconds |
+| `s <0-255>` | envelope sustain level |
+| `dur <ms>` | gate length before release (0 = play the whole sample) |
+| `gain <0-256+>` | per-layer level (256 = unity) |
 
 ### SSH Client Notes
 

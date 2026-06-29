@@ -261,27 +261,92 @@ def render_cycle(code, cycle):
     return out
 
 
+# ----- per-layer effects ----------------------------------------------------
+# A pattern line can carry an effect tail after "|", e.g.
+#   bd*4 | lpf 600 r 40
+# Keys map to picosampler.play kwargs. Effects apply to every event on the line.
+
+_FX_KEYS = ("lpf", "hpf", "res", "gain", "a", "d", "s", "r", "dur")
+
+
+def _parse_fx(s):
+    fx = {}
+    toks = s.split()
+    i = 0
+    while i < len(toks):
+        k = toks[i]
+        if k in _FX_KEYS and i + 1 < len(toks):
+            try:
+                fx[k] = int(float(toks[i + 1]))
+            except ValueError:
+                pass
+            i += 2
+        else:
+            i += 1
+    return fx
+
+
+def _parse_layer(line):
+    if "|" in line:
+        pat, fxs = line.split("|", 1)
+    else:
+        pat, fxs = line, ""
+    return (_parse(pat), _parse_fx(fxs))
+
+
+def _parse_layers(code):
+    """Split multi-line code into [(node, fx), ...]. Each non-empty,
+    comment-stripped line is a layer (stacked together)."""
+    layers = []
+    for line in code.split("\n"):
+        line = line[:_comment_cut(line)].strip()
+        if line:
+            layers.append(_parse_layer(line))
+    return layers
+
+
+def _play(sid, fx, default_gain):
+    picosampler.play(
+        sid, fx.get("gain", default_gain),
+        lpf=fx.get("lpf", 0), hpf=fx.get("hpf", 0), res=fx.get("res", 70),
+        a=fx.get("a", 0), d=fx.get("d", 0), s=fx.get("s", 255),
+        r=fx.get("r", 0), dur=fx.get("dur", 0))
+
+
+def _render_layers(layers, cycle):
+    """Render all layers for one cycle -> sorted [(offset, name, fx), ...]."""
+    raw = []
+    for node, fx in layers:
+        out = []
+        try:
+            _render(node, cycle, 0.0, 1.0, out)
+        except Exception:
+            out = []
+        for off, name in out:
+            raw.append((off, name, fx))
+    raw.sort(key=lambda e: e[0])
+    return raw
+
+
 # ----- clock / player -------------------------------------------------------
 
 def jam(code, cps=0.5, cycles=8, gain=220):
     """Play `code` for `cycles` cycles at `cps` cycles/second. Blocks."""
     init()
-    node = _parse(code)
+    layers = _parse_layers(code)
     cyc_ms = int(1000.0 / cps)
     try:
         for cy in range(cycles):
-            out = []
-            _render(node, cy, 0.0, 1.0, out)
-            out.sort(key=lambda e: e[0])
+            raw = _render_layers(layers, cy)
             t0 = time.ticks_ms()
-            for offset, name in out:
-                target = time.ticks_add(t0, int(offset * cyc_ms))
+            for off, name, fx in raw:
+                target = time.ticks_add(t0, int(off * cyc_ms))
                 d = time.ticks_diff(target, time.ticks_ms())
                 if d > 0:
                     time.sleep_ms(d)
                 sid = _sample(name)
                 if sid is not None:
-                    picosampler.play(sid, gain)
+                    _play(sid, fx, gain)
             end = time.ticks_add(t0, cyc_ms)
             d = time.ticks_diff(end, time.ticks_ms())
             if d > 0:
@@ -303,7 +368,7 @@ def stop():
 class Sequencer:
     def __init__(self, cps=0.5, gain=220):
         self.gain = gain
-        self.node = None
+        self.layers = []      # list of (node, fx)
         self.pending = None
         self.code = ""
         self.error = None
@@ -312,24 +377,25 @@ class Sequencer:
         self.cps = cps
         self.cyc_ms = int(1000.0 / cps)
         self.cycle_start = 0
-        self.events = []      # (target_ms, name)
+        self.events = []      # (target_ms, name, fx)
         self.offsets = []     # event offsets 0..1 for the UI timeline
         self.idx = 0
 
     def set_code(self, code):
-        """Parse and queue `code`. Swaps in at the next cycle boundary if
-        already playing. Returns True on success, False on parse error."""
+        """Parse and queue `code` (multi-line, one layer per line, optional
+        '| fx' tail). Swaps in at the next cycle boundary if already playing.
+        Returns True on success, False on parse error."""
         try:
-            node = _parse(code)
+            layers = _parse_layers(code)
         except Exception as e:
             self.error = str(e)
             return False
         self.error = None
         self.code = code
-        if self.node is None:
-            self.node = node
+        if not self.layers:
+            self.layers = layers
         else:
-            self.pending = node
+            self.pending = layers
         return True
 
     def set_cps(self, cps):
@@ -342,7 +408,7 @@ class Sequencer:
 
     def start(self):
         init()
-        if self.node is None:
+        if not self.layers:
             return
         self.playing = True
         self.cycle = 0
@@ -354,16 +420,10 @@ class Sequencer:
         picosampler.stop_all()
 
     def _load(self):
-        out = []
-        if self.node is not None:
-            try:
-                _render(self.node, self.cycle, 0.0, 1.0, out)
-            except Exception:
-                out = []
-        out.sort(key=lambda e: e[0])
-        self.offsets = [o for o, _ in out]
-        self.events = [(time.ticks_add(self.cycle_start, int(o * self.cyc_ms)), n)
-                       for o, n in out]
+        raw = _render_layers(self.layers, self.cycle)
+        self.offsets = [e[0] for e in raw]
+        self.events = [(time.ticks_add(self.cycle_start, int(off * self.cyc_ms)), name, fx)
+                       for off, name, fx in raw]
         self.idx = 0
 
     def tick(self):
@@ -372,15 +432,16 @@ class Sequencer:
         now = time.ticks_ms()
         ev = self.events
         while self.idx < len(ev) and time.ticks_diff(ev[self.idx][0], now) <= 0:
-            sid = _sample(ev[self.idx][1])
+            _, name, fx = ev[self.idx]
+            sid = _sample(name)
             if sid is not None:
-                picosampler.play(sid, self.gain)
+                _play(sid, fx, self.gain)
             self.idx += 1
         if time.ticks_diff(time.ticks_add(self.cycle_start, self.cyc_ms), now) <= 0:
             self.cycle += 1
             self.cycle_start = time.ticks_add(self.cycle_start, self.cyc_ms)
             if self.pending is not None:
-                self.node = self.pending
+                self.layers = self.pending
                 self.pending = None
             self._load()
 
