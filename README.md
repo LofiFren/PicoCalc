@@ -441,8 +441,10 @@ docker run --rm \
 
 - **Strudel on PicoCalc** -- a port of [Strudel](https://strudel.cc/)/TidalCycles pattern music to the handheld:
   - **`picosampler`** native C audio engine -- a DMA-paced PWM sampler that mixes up to 8 voices of 8-bit PCM streamed from the SD card on **both** audio channels, so the device plays real sampled drums instead of pulse-wave beeps. Compiled into the v1.28 firmware as a third C module.
-  - **Mini-notation sequencer** (`strudel.py`) -- parses a Strudel subset (`bd sd hh*2`, `[bd sd]`, `<bd cp>`, euclid `bd(3,8)`, comma-stacked layers) and schedules it in real time.
+  - **Per-voice DSP** -- a resonant 2-stage filter (lowpass/highpass) and an ADSR envelope, all fixed-point so the audio interrupt never touches the FPU. Drive it from the mini-notation with a per-layer effect tail: `bd*4 , hh*8 | lpf 600 res 150 r 40` (see [Strudel Effects](#strudel-effects)).
+  - **Mini-notation sequencer** (`strudel.py`) -- parses a Strudel subset (`bd sd hh*2`, `[bd sd]`, `<bd cp>`, euclid `bd(3,8)`, comma-stacked layers, `//` and `#` comments) and schedules it in real time.
   - **Live-coding UI** (`strudel_live.py`) -- edit patterns on the device and hear them update at the next cycle (like Strudel's Ctrl-Enter); sweeping playhead, event timeline, and **5 real color themes** -- SonicPink, Dracula, Monokai, Nord, Terminal.
+  - **Strudel Basics** (`strudel_demo.py`) -- an interactive 11-lesson color tutorial that teaches the mini-notation and effects with live audio and a rhythm timeline.
 - **Real color from the 4-bit display** -- the GS4 framebuffer drives a 16-entry hardware color LUT, so apps can show true color (not just grayscale) by reprogramming the palette with `picocalcdisplay.setLUT` -- no extra framebuffer RAM. Themes become instant palette swaps.
 - **Categorized app menu** -- `py_run.py` now groups apps into sections with one-line descriptions and **auto-hides library/helper files** (no more stray modules in the list). Apps opt in via a `# picocalc-app: Name | Category | description` header.
 - **Removed Remote Claude** -- the on-device Anthropic-API chat app (`picocalc_claude.py`) has been retired.
