@@ -309,6 +309,12 @@ def main():
     try:
         LiveCoder().run()
     except Exception as e:
+        try:
+            f = open("/sd/sl_crash.txt", "w")
+            sys.print_exception(e, f)
+            f.close()
+        except Exception:
+            pass
         sys.print_exception(e)
         try:
             _apply_lut(_ORIG_LUT, swapped=True)

@@ -1,24 +1,24 @@
 // picosampler - DMA-paced PWM audio mixer for PicoCalc (RP2350 / Pico 2W).
 //
-// Strudel-on-PicoCalc audio engine (option C1/C2). A native C sampler that
-// streams 8-bit PCM one-shots from the SD card and mixes them to the audio PWM
-// pins via DMA. Per voice it now also supports an ADSR amplitude envelope and a
-// 2-stage resonant filter (highpass -> lowpass), so patterns can shape the
-// sound the way Strudel's lpf/hpf/adsr do.
+// Strudel-on-PicoCalc audio engine (C1/C2). A native C sampler that streams
+// 8-bit PCM one-shots from the SD card and mixes them to the audio PWM pins via
+// DMA. Per voice it supports an ADSR amplitude envelope and a 2-stage resonant
+// filter (highpass -> lowpass), like Strudel's lpf/hpf/adsr.
 //
-// Signal path (all per-sample, in float):
-//   sample(-1..1) * gain -> HPF (SVF) -> LPF (SVF) -> ADSR env -> sum -> PWM
-// The PWM wrap is ~6800 (sys_clk/sample_rate), i.e. ~12.7-bit output, so mixing
-// in float and mapping to [0, wrap] keeps full resolution (no 8-bit bottleneck).
+// Signal path (per sample, Q16 FIXED POINT):
+//   sample(-1..1) * gain -> HPF (SVF) -> LPF (SVF) -> ADSR -> sum -> PWM
+// The per-sample mix runs in the DMA IRQ, so it is INTEGER-ONLY: float in the
+// audio ISR (concurrent with display rendering) was found to hard-fault the
+// board. Filter/envelope coefficients are computed in float at note-on (on the
+// main thread, in play()) and stored as Q16 integers; the ISR never touches the
+// FPU. The PWM wrap is ~6800 (sys_clk/sample_rate) so output is ~12.7-bit.
 //
-// Design notes:
+// Other notes:
 //   - PWM slice runs AT the sample rate; per-wrap DREQ paces ping-pong DMA, one
-//     transfer per sample (storm-proof). Both audio pins (GPIO 28 + 27) are fed
-//     the same mono mix via two DMA pairs (the PicoCalc speaker needs both).
-//   - Mixing + DSP happen in the DMA-completion IRQ. The RP2350 M33 has an FPU
-//     with lazy stacking, so float in the ISR is safe.
-//   - irq_add_shared_handler (NOT exclusive): MicroPython's rp2 port already
-//     owns DMA_IRQ_0 with a shared handler; exclusive would panic/hang.
+//     transfer per sample. Both audio pins (GPIO 28 + 27) get the same mono mix
+//     via two DMA pairs (the PicoCalc speaker needs both driven).
+//   - irq_add_shared_handler (NOT exclusive): MicroPython's rp2 port owns
+//     DMA_IRQ_0 with a shared handler; exclusive would panic/hang.
 //   - register() pins sample bytes as GC roots; the non-moving GC keeps the raw
 //     pointer valid.
 
@@ -45,11 +45,13 @@
 #define MAX_VOICES      8
 #define MAX_SAMPLES     16
 #define DEFAULT_SR      22050
+#define Q               16            // fixed-point fractional bits
+#define FX_ONE          (1 << Q)      // 1.0 in Q16
 
-// Topology-preserving (Cytomic) state-variable filter, one stage.
+// Cytomic TPT state-variable filter, one stage, Q16 fixed point.
 typedef struct {
-    float ic1, ic2;        // integrator state
-    float a1, a2, a3, k;   // coefficients
+    int32_t ic1, ic2;      // integrator state
+    int32_t a1, a2, a3, k; // coefficients (Q16)
     int on;
 } svf_t;
 
@@ -57,12 +59,12 @@ typedef struct {
     const uint8_t *data;
     uint32_t len;
     uint32_t pos;
-    float gain;
+    int32_t gain;          // Q16
     volatile bool active;
-    // ADSR
+    // ADSR (all Q16)
     int env_stage;         // 0=attack 1=decay 2=sustain 3=release
-    float env, a_inc, d_inc, r_inc, sus;
-    uint32_t gate, age;    // gate=samples until release (0 = none)
+    int32_t env, a_inc, d_inc, r_inc, sus;
+    uint32_t gate, age;    // gate = samples until release (0 = none)
     // filters
     svf_t hp, lp;
 } voice_t;
@@ -86,7 +88,7 @@ static float actual_sr = 0.0f;
 
 MP_REGISTER_ROOT_POINTER(mp_obj_t picosampler_keepalive[MAX_SAMPLES]);
 
-// ---- DSP helpers -----------------------------------------------------------
+// ---- DSP: float coeffs at note-on (main thread), integer run (ISR) ---------
 
 static void svf_set(svf_t *f, int cutoff, int res) {
     if (cutoff <= 0) {
@@ -104,50 +106,53 @@ static void svf_set(svf_t *f, int cutoff, int res) {
         q = 0.5f;
     }
     float k = 1.0f / q;
-    f->a1 = 1.0f / (1.0f + g * (g + k));
-    f->a2 = g * f->a1;
-    f->a3 = g * f->a2;
-    f->k = k;
-    f->ic1 = 0.0f;
-    f->ic2 = 0.0f;
+    float a1 = 1.0f / (1.0f + g * (g + k));
+    f->a1 = (int32_t)(a1 * FX_ONE);
+    f->a2 = (int32_t)(g * a1 * FX_ONE);
+    f->a3 = (int32_t)(g * g * a1 * FX_ONE);
+    f->k = (int32_t)(k * FX_ONE);
+    f->ic1 = 0;
+    f->ic2 = 0;
     f->on = 1;
 }
 
-// Returns the lowpass output if low!=0, else the highpass output.
-static inline float svf_run(svf_t *f, float x, int low) {
-    float v3 = x - f->ic2;
-    float v1 = f->a1 * f->ic1 + f->a2 * v3;
-    float v2 = f->ic2 + f->a2 * f->ic1 + f->a3 * v3;
-    f->ic1 = 2.0f * v1 - f->ic1;
-    f->ic2 = 2.0f * v2 - f->ic2;
-    return low ? v2 : (x - f->k * v1 - v2);
+// Integer SVF step. Returns lowpass output if low!=0, else highpass.
+static inline int32_t svf_run(svf_t *f, int32_t x, int low) {
+    int32_t v3 = x - f->ic2;
+    int32_t v1 = (int32_t)(((int64_t)f->a1 * f->ic1 + (int64_t)f->a2 * v3) >> Q);
+    int32_t v2 = f->ic2 + (int32_t)(((int64_t)f->a2 * f->ic1 + (int64_t)f->a3 * v3) >> Q);
+    f->ic1 = 2 * v1 - f->ic1;
+    f->ic2 = 2 * v2 - f->ic2;
+    if (low) {
+        return v2;
+    }
+    return x - (int32_t)(((int64_t)f->k * v1) >> Q) - v2;
 }
 
 static void mix_block(uint32_t *buf) {
-    const float half = pwm_wrap * 0.5f;
+    const int32_t half = (int32_t)(pwm_wrap / 2);
     for (int i = 0; i < BLOCK; i++) {
-        float acc = 0.0f;
+        int32_t acc = 0;
         for (int v = 0; v < MAX_VOICES; v++) {
             voice_t *vp = &voices[v];
             if (!vp->active) {
                 continue;
             }
-            float x = ((float)vp->data[vp->pos] - 128.0f) * (1.0f / 128.0f);
-            x *= vp->gain;
+            int32_t x = ((int32_t)vp->data[vp->pos] - 128) << 9;  // ~ -1..1 Q16
+            x = (int32_t)(((int64_t)x * vp->gain) >> Q);
             if (vp->hp.on) {
                 x = svf_run(&vp->hp, x, 0);
             }
             if (vp->lp.on) {
                 x = svf_run(&vp->lp, x, 1);
             }
-            x *= vp->env;
+            x = (int32_t)(((int64_t)x * vp->env) >> Q);
             acc += x;
 
-            // advance ADSR
             switch (vp->env_stage) {
                 case 0:
                     vp->env += vp->a_inc;
-                    if (vp->env >= 1.0f) { vp->env = 1.0f; vp->env_stage = 1; }
+                    if (vp->env >= FX_ONE) { vp->env = FX_ONE; vp->env_stage = 1; }
                     break;
                 case 1:
                     vp->env -= vp->d_inc;
@@ -158,7 +163,7 @@ static void mix_block(uint32_t *buf) {
                     break;
                 default:
                     vp->env -= vp->r_inc;
-                    if (vp->env <= 0.0f) { vp->env = 0.0f; vp->active = false; }
+                    if (vp->env <= 0) { vp->env = 0; vp->active = false; }
                     break;
             }
             vp->age++;
@@ -169,7 +174,7 @@ static void mix_block(uint32_t *buf) {
                 vp->active = false;
             }
         }
-        int32_t level = (int32_t)(acc * half + half);
+        int32_t level = (int32_t)(((int64_t)acc * (int32_t)pwm_wrap) >> (Q + 1)) + half;
         if (level < 0) {
             level = 0;
         } else if (level > (int32_t)pwm_wrap) {
@@ -333,18 +338,22 @@ static mp_obj_t ps_play(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_ar
         vp->data = samples[id].data;
         vp->len = samples[id].len;
         vp->pos = 0;
-        vp->gain = a[ARG_gain].u_int / 256.0f;
+        vp->gain = (int32_t)a[ARG_gain].u_int << 8;     // 256 -> 1.0 in Q16
 
-        vp->sus = a[ARG_s].u_int / 255.0f;
+        int sl = a[ARG_s].u_int;
+        vp->sus = (int32_t)((int64_t)sl * FX_ONE / 255);
         int ms_a = a[ARG_a].u_int, ms_d = a[ARG_d].u_int, ms_r = a[ARG_r].u_int;
-        vp->a_inc = ms_a > 0 ? 1.0f / (ms_a * 0.001f * fs) : 2.0f;
-        vp->d_inc = ms_d > 0 ? (1.0f - vp->sus) / (ms_d * 0.001f * fs) : 2.0f;
-        vp->r_inc = ms_r > 0 ? 1.0f / (ms_r * 0.001f * fs) : 2.0f;
+        vp->a_inc = ms_a > 0 ? (int32_t)(FX_ONE / (ms_a * 0.001f * fs)) : FX_ONE + 1;
+        vp->d_inc = ms_d > 0 ? (int32_t)((FX_ONE - vp->sus) / (ms_d * 0.001f * fs)) : FX_ONE + 1;
+        vp->r_inc = ms_r > 0 ? (int32_t)(FX_ONE / (ms_r * 0.001f * fs)) : FX_ONE + 1;
+        if (vp->a_inc < 1) vp->a_inc = 1;
+        if (vp->d_inc < 1) vp->d_inc = 1;
+        if (vp->r_inc < 1) vp->r_inc = 1;
         if (ms_a > 0) {
-            vp->env = 0.0f;
+            vp->env = 0;
             vp->env_stage = 0;
         } else {
-            vp->env = 1.0f;
+            vp->env = FX_ONE;
             vp->env_stage = 1;
         }
         int dur = a[ARG_dur].u_int;
