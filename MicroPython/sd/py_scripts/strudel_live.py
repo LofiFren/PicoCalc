@@ -117,6 +117,7 @@ class LiveCoder:
         self.cc = 0
         self.dirty = True
         self.running = True
+        self._last_eval = 0        # ticks_ms of last _evaluate (debounce guard)
 
     # ----- input ----------------------------------------------------------
     def _read_keys(self):
@@ -209,6 +210,17 @@ class LiveCoder:
     def _evaluate(self):
         # Each editor line is a layer (comment-stripped + emptied lines are
         # dropped by the parser). Newline-join preserves per-line "| fx" tails.
+        # set_code queues the new pattern to swap in at the next cycle boundary
+        # while playing (Strudel's Ctrl-Enter feel), or starts playback if idle.
+        #
+        # Debounce: parsing allocates, and machine-gun re-eval (many per second)
+        # thrashes the heap hard enough to destabilise the audio engine running
+        # in the DMA IRQ. Cap the rate -- a human never types this fast, so the
+        # cap is invisible in normal use but makes pathological abuse harmless.
+        now = utime.ticks_ms()
+        if utime.ticks_diff(now, self._last_eval) < 150:
+            return
+        self._last_eval = now
         code = "\n".join(self.lines)
         if self.seq.set_code(code) and not self.seq.playing:
             self.seq.start()
@@ -278,6 +290,13 @@ class LiveCoder:
 
     # ----- loop -----------------------------------------------------------
     def run(self):
+        # Stop the Core-1 auto-refresh and push frames synchronously on Core 0.
+        # The audio engine's DMA IRQ fires continuously on Core 0 the whole time
+        # it is initialised; if Core 1 is also pushing the framebuffer, the
+        # cross-core contention (Core 0 IRQ + Core 1 DMA + Core 0 heap/flash)
+        # hard-locks the board under load. Keeping both the mixer and the
+        # display on Core 0 serialises them safely. Refresh is restored on exit.
+        self.d.stopRefresh()
         _apply_lut(THEMES[self.theme]["cols"])
         try:
             while self.running:
@@ -302,6 +321,7 @@ class LiveCoder:
             self.d.beginDraw()
             self.d.fill(0)
             self.d.show()
+            self.d.recoverRefresh()               # hand the display back to Core 1
 
 
 def main():

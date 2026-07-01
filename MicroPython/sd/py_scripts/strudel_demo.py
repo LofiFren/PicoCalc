@@ -237,6 +237,10 @@ class Tutorial:
 
     # ----- loop ----------------------------------------------------------
     def run(self):
+        # Push frames on Core 0 (see strudel_live): the audio DMA IRQ runs on
+        # Core 0 continuously, and letting Core 1 push the framebuffer at the
+        # same time can hard-lock the board under load. Restored on exit.
+        self.d.stopRefresh()
         _apply_lut(THEMES[self.theme]["cols"])
         self._load_lesson()
         try:
@@ -262,6 +266,7 @@ class Tutorial:
             self.d.beginDraw()
             self.d.fill(0)
             self.d.show()
+            self.d.recoverRefresh()               # hand the display back to Core 1
 
 
 def main():

@@ -405,6 +405,100 @@ machine.reset()
             rc, out, err = self._run("exec", code, timeout=12)
             return "EJECT_OK" in out
 
+    # --- Firmware flashing (BOOTSEL over USB, no unplugging) ---
+
+    def list_firmware(self):
+        """List the .uf2 firmware images bundled under MicroPython/firmware/."""
+        fw_dir = MP_DIR / "firmware"
+        out = []
+        if fw_dir.is_dir():
+            for f in sorted(fw_dir.glob("*.uf2")):
+                st = f.stat()
+                out.append({
+                    "name": f.name,
+                    "size": st.st_size,
+                    "mtime": int(st.st_mtime),
+                })
+        # Newest first -- the freshly built image is usually what you want.
+        out.sort(key=lambda x: x["mtime"], reverse=True)
+        return out
+
+    @staticmethod
+    def _find_rp2_drive():
+        """Path to a mounted RP2 ROM-bootloader drive, or None. Detected by the
+        INFO_UF2.TXT marker the bootloader always exposes (works for RP2040 and
+        RP2350 regardless of the volume label)."""
+        import glob as _glob
+        candidates = []
+        candidates += _glob.glob("/Volumes/*")            # macOS
+        candidates += _glob.glob("/media/*/*")            # Linux (udisks)
+        candidates += _glob.glob("/run/media/*/*")        # Linux (systemd)
+        if os.name == "nt":                               # Windows drive letters
+            candidates += [f"{d}:\\" for d in "DEFGHIJKLMNOPQRSTUVWXYZ"]
+        for c in candidates:
+            try:
+                if os.path.isfile(os.path.join(c, "INFO_UF2.TXT")):
+                    return c
+            except Exception:
+                continue
+        return None
+
+    def flash_firmware(self, uf2_name):
+        """Flash a bundled .uf2 without physically touching the device: reboot
+        it into the ROM bootloader over USB (machine.bootloader()), copy the
+        image onto the mass-storage drive it exposes, then let it reboot into
+        the new firmware. Returns a status dict."""
+        import time as _time
+        fw_dir = MP_DIR / "firmware"
+        # Guard against path traversal -- name must be a bare *.uf2 in fw_dir.
+        if uf2_name != Path(uf2_name).name or not uf2_name.endswith(".uf2"):
+            return {"ok": False, "stage": "validate", "msg": "Invalid firmware name"}
+        uf2 = fw_dir / uf2_name
+        if not uf2.is_file():
+            return {"ok": False, "stage": "validate", "msg": f"Not found: {uf2_name}"}
+
+        # Enter the bootloader (unless a drive is already mounted from a prior
+        # BOOTSEL). This drops USB serial mid-command, so mpremote errors -- and
+        # that's expected; we just poll for the drive next.
+        drive = self._find_rp2_drive()
+        if not drive:
+            with self.lock:
+                self._run("exec", "import machine; machine.bootloader()", timeout=8)
+            for _ in range(40):                # up to ~20s for the drive to mount
+                drive = self._find_rp2_drive()
+                if drive:
+                    break
+                _time.sleep(0.5)
+        if not drive:
+            return {"ok": False, "stage": "bootloader",
+                    "msg": "Bootloader drive did not appear -- is the device connected?"}
+
+        # Copy the image. The board reboots the instant the write finishes, so
+        # copy() may raise (ejected disk / broken pipe) even on success; we
+        # confirm by re-enumeration below rather than trusting its return.
+        copy_err = None
+        try:
+            shutil.copy(str(uf2), os.path.join(drive, uf2_name))
+        except Exception as e:
+            copy_err = str(e)
+
+        # Wait for the board to reboot and answer over serial again.
+        _time.sleep(3)
+        reconnected = False
+        for _ in range(25):                    # up to ~25s
+            if self.is_connected():
+                reconnected = True
+                break
+            _time.sleep(1)
+        return {
+            "ok": reconnected,
+            "stage": "flash",
+            "firmware": uf2_name,
+            "msg": ("Flashed and reconnected." if reconnected else
+                    "Firmware written; device is rebooting (reconnect may take a moment)."),
+            "copy_note": copy_err,
+        }
+
     def deploy_boot(self):
         """Deploy boot.py and main.py to device root."""
         results = []
@@ -884,6 +978,30 @@ def api_eject():
     """Restart menu on device and signal dashboard to stop polling."""
     ok = dm.eject()
     return json_response({"ok": ok})
+
+
+# --- API: Firmware ---
+
+@app.route("/api/firmware")
+def api_firmware_list():
+    """List bundled .uf2 firmware images available to flash."""
+    try:
+        return json_response({"firmware": dm.list_firmware()})
+    except Exception as e:
+        return json_response({"error": str(e)}, 500)
+
+
+@app.route("/api/firmware/flash", method="POST")
+def api_firmware_flash():
+    """Reboot into BOOTSEL over USB and flash the selected .uf2 -- no unplugging."""
+    data = request.json or {}
+    name = data.get("name")
+    if not name:
+        return json_response({"error": "name field required"}, 400)
+    try:
+        return json_response(dm.flash_firmware(name))
+    except Exception as e:
+        return json_response({"error": str(e)}, 500)
 
 
 # --- API: Diff ---

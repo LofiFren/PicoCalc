@@ -325,6 +325,7 @@
     </div>
     <button class="btn" onclick="deploy('all')">Deploy All</button>
     <button class="btn" onclick="cleanupDevice()">Cleanup</button>
+    <button class="btn" onclick="openFirmware()" title="Flash MicroPython firmware over USB (no unplugging)">Firmware</button>
     <button class="btn" onclick="resetDevice()">Reset</button>
     <button class="btn eject" onclick="ejectDevice()" title="Restart menu on device, safe to unplug">Eject</button>
   </div>
@@ -450,6 +451,25 @@
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- --- Firmware flash modal --- -->
+<div id="fwOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center;">
+  <div style="background:#1b1b1b; border:1px solid #3a3a3a; border-radius:8px; width:560px; max-width:92vw; max-height:86vh; overflow:auto; padding:18px 20px; box-shadow:0 12px 40px rgba(0,0,0,0.6);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+      <h3 style="margin:0; color:#e0e0e0; font-size:15px;">Flash Firmware</h3>
+      <button class="btn sm" onclick="closeFirmware()">Close</button>
+    </div>
+    <p style="color:#888; font-size:12px; margin:6px 0 14px;">
+      Reboots the PicoCalc into its ROM bootloader over USB and writes the image &mdash;
+      <b style="color:#aaa;">no unplugging, no BOOTSEL button.</b>
+      The device reboots into the new firmware when done. Your SD card and internal files are preserved.
+    </p>
+    <div id="fwList" style="display:flex; flex-direction:column; gap:8px;">
+      <div style="color:#888; font-size:12px;">Loading firmware images&hellip;</div>
+    </div>
+    <div id="fwStatus" style="margin-top:14px; color:#c0c0c0; font-size:12px; min-height:16px;"></div>
   </div>
 </div>
 
@@ -1085,6 +1105,78 @@ async function ejectDevice() {
     log('Eject sent (device may have rebooted before responding).', 'log-info');
   }
 }
+
+// --- Firmware flashing (BOOTSEL over USB) ---
+let fwFlashing = false;
+function fmtBytes(n) {
+  if (n >= 1048576) return (n/1048576).toFixed(2) + ' MB';
+  if (n >= 1024) return (n/1024).toFixed(0) + ' KB';
+  return n + ' B';
+}
+async function openFirmware() {
+  document.getElementById('fwStatus').textContent = '';
+  document.getElementById('fwOverlay').style.display = 'flex';
+  const list = document.getElementById('fwList');
+  list.innerHTML = '<div style="color:#888; font-size:12px;">Loading firmware images&hellip;</div>';
+  const data = await api('/api/firmware');
+  if (!data || data.error) { list.innerHTML = '<div style="color:#e06060; font-size:12px;">Failed to list firmware: ' + ((data&&data.error)||'?') + '</div>'; return; }
+  const fw = data.firmware || [];
+  if (!fw.length) { list.innerHTML = '<div style="color:#888; font-size:12px;">No .uf2 files in MicroPython/firmware/</div>'; return; }
+  list.innerHTML = '';
+  fw.forEach((f, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; border:1px solid #333; border-radius:6px; padding:9px 11px; background:#161616;';
+    const when = f.mtime ? new Date(f.mtime*1000).toLocaleString() : '';
+    row.innerHTML = '<div style="min-width:0;">' +
+      '<div style="color:#e0e0e0; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + f.name + (i===0?' <span style="color:#5aa9e0; font-size:10px;">newest</span>':'') + '</div>' +
+      '<div style="color:#777; font-size:11px;">' + fmtBytes(f.size) + '  &middot;  ' + when + '</div></div>';
+    const btn = document.createElement('button');
+    btn.className = 'btn sm'; btn.textContent = 'Flash';
+    btn.onclick = () => flashFirmware(f.name);
+    row.appendChild(btn);
+    list.appendChild(row);
+  });
+}
+function closeFirmware() {
+  if (fwFlashing) return;   // don't let the user bail mid-flash
+  document.getElementById('fwOverlay').style.display = 'none';
+}
+async function flashFirmware(name) {
+  if (fwFlashing) return;
+  if (!confirm('Flash ' + name + '?\n\nThe device will reboot into its bootloader over USB, write the firmware, and restart. Do not unplug it.')) return;
+  fwFlashing = true;
+  connected = false;
+  const status = document.getElementById('fwStatus');
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  dot.className = 'status-dot';
+  status.innerHTML = '<span style="color:#e0a030;">Rebooting into bootloader and writing ' + name + ' &mdash; do not unplug&hellip;</span>';
+  txt.textContent = 'Flashing firmware...';
+  log('Firmware: entering bootloader and flashing ' + name + '...', 'log-info');
+  switchTab('log'); setBusy(true);
+  const result = await api('/api/firmware/flash', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name})});
+  setBusy(false);
+  fwFlashing = false;
+  if (!result || result.error) {
+    status.innerHTML = '<span style="color:#e06060;">Failed: ' + ((result&&result.error)||'?') + '</span>';
+    log('Firmware flash failed: ' + ((result&&result.error)||'?'), 'log-err');
+    toast('Flash failed', 'err');
+    return;
+  }
+  if (result.ok) {
+    status.innerHTML = '<span style="color:#60c060;">Done &mdash; ' + result.msg + '</span>';
+    log('Firmware flashed: ' + name + ' -- ' + result.msg, 'log-ok');
+    toast('Firmware flashed');
+    setTimeout(() => { closeFirmwareForce(); pollDevice(); }, 1500);
+  } else {
+    status.innerHTML = '<span style="color:#e0a030;">' + (result.msg||'Firmware written; device rebooting') + '</span>';
+    log('Firmware written (' + result.stage + '): ' + (result.msg||''), 'log-info');
+    if (result.copy_note) log('  note: ' + result.copy_note, 'log-info');
+    toast('Firmware written -- device rebooting');
+    setTimeout(pollDevice, 4000);
+  }
+}
+function closeFirmwareForce() { document.getElementById('fwOverlay').style.display = 'none'; }
 
 // --- Drag and drop onto device pane ---
 async function handlePaneDrop(e) {

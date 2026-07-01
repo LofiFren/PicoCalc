@@ -117,7 +117,8 @@ static void svf_set(svf_t *f, int cutoff, int res) {
 }
 
 // Integer SVF step. Returns lowpass output if low!=0, else highpass.
-static inline int32_t svf_run(svf_t *f, int32_t x, int low) {
+// always_inline so it folds into the RAM-resident mix_block (never left in flash).
+static inline __attribute__((always_inline)) int32_t svf_run(svf_t *f, int32_t x, int low) {
     int32_t v3 = x - f->ic2;
     int32_t v1 = (int32_t)(((int64_t)f->a1 * f->ic1 + (int64_t)f->a2 * v3) >> Q);
     int32_t v2 = f->ic2 + (int32_t)(((int64_t)f->a2 * f->ic1 + (int64_t)f->a3 * v3) >> Q);
@@ -129,7 +130,11 @@ static inline int32_t svf_run(svf_t *f, int32_t x, int low) {
     return x - (int32_t)(((int64_t)f->k * v1) >> Q) - v2;
 }
 
-static void mix_block(uint32_t *buf) {
+// RAM-resident: the audio ISR must never fetch its own code from flash (XIP).
+// When Core 1 (display) and Core 0 (MicroPython) are both hammering flash, an
+// IRQ that runs from XIP can hard-fault the board. Placing the whole mix path
+// in RAM removes that dependency. svf_run is static inline and folds in here.
+static void __not_in_flash_func(mix_block)(uint32_t *buf) {
     const int32_t half = (int32_t)(pwm_wrap / 2);
     for (int i = 0; i < BLOCK; i++) {
         int32_t acc = 0;
@@ -184,7 +189,7 @@ static void mix_block(uint32_t *buf) {
     }
 }
 
-static void __isr dma_handler(void) {
+static void __isr __not_in_flash_func(dma_handler)(void) {
     irq_count++;
     if (dma_hw->ints0 & (1u << dma_la)) {
         dma_hw->ints0 = 1u << dma_la;
