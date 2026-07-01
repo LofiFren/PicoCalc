@@ -237,10 +237,9 @@ class Tutorial:
 
     # ----- loop ----------------------------------------------------------
     def run(self):
-        # Push frames on Core 0 (see strudel_live): the audio DMA IRQ runs on
-        # Core 0 continuously, and letting Core 1 push the framebuffer at the
-        # same time can hard-lock the board under load. Restored on exit.
-        self.d.stopRefresh()
+        # Leave Core-1 auto-refresh ON (do NOT stopRefresh() -- it wedges the
+        # terminal and blanks the screen on exit). The old hard-lock is fixed in
+        # firmware (RAM-resident picosampler mix path); see strudel_live.
         _apply_lut(THEMES[self.theme]["cols"])
         self._load_lesson()
         try:
@@ -266,7 +265,6 @@ class Tutorial:
             self.d.beginDraw()
             self.d.fill(0)
             self.d.show()
-            self.d.recoverRefresh()               # hand the display back to Core 1
 
 
 def main():

@@ -290,13 +290,12 @@ class LiveCoder:
 
     # ----- loop -----------------------------------------------------------
     def run(self):
-        # Stop the Core-1 auto-refresh and push frames synchronously on Core 0.
-        # The audio engine's DMA IRQ fires continuously on Core 0 the whole time
-        # it is initialised; if Core 1 is also pushing the framebuffer, the
-        # cross-core contention (Core 0 IRQ + Core 1 DMA + Core 0 heap/flash)
-        # hard-locks the board under load. Keeping both the mixer and the
-        # display on Core 0 serialises them safely. Refresh is restored on exit.
-        self.d.stopRefresh()
+        # NOTE: we deliberately leave Core-1 display auto-refresh ON (do NOT call
+        # stopRefresh() -- it wedges Core 1 / the terminal and leaves a blank
+        # screen on exit). The hard-lock this app used to hit came from the audio
+        # DMA IRQ executing from flash while Core 1 pushed frames; that is fixed
+        # in firmware (picosampler mix path is now RAM-resident). The 150ms eval
+        # debounce in _evaluate keeps re-eval churn well inside the safe range.
         _apply_lut(THEMES[self.theme]["cols"])
         try:
             while self.running:
@@ -321,7 +320,6 @@ class LiveCoder:
             self.d.beginDraw()
             self.d.fill(0)
             self.d.show()
-            self.d.recoverRefresh()               # hand the display back to Core 1
 
 
 def main():
